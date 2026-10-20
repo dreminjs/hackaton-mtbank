@@ -28,6 +28,8 @@ model User {
   createdTasks             Task[]            @relation("CreatedTasks")
   assignedTasks            Task[]            @relation("AssignedTasks")
   completedTasks           Task[]            @relation("CompletedTasks")
+  piggyBanks               PiggyBank[]       @relation("OwnerPiggyBanks")
+  piggyBankContributions   PiggyBankContribution[]
 
   createdAt                DateTime          @default(now())
   updatedAt                DateTime          @updatedAt
@@ -67,6 +69,7 @@ model Card {
   transferRequests TransferRequest[]
   taskCreatorCards Task[]            @relation("TaskCreatorCard")
   taskTargetCards  Task[]            @relation("TaskTargetCard")
+  piggyBankContributions PiggyBankContribution[]
 }
 
 model Transaction {
@@ -149,6 +152,49 @@ enum TaskStatus {
   CANCELLED
 }
 
+model PiggyBank {
+  id            String                  @id @default(uuid())
+  title         String                  // Например: "PlayStation 5", "Новый велосипед"
+  description   String?
+  targetAmount  Decimal                 @db.Decimal(10, 2) // Целевая сумма
+  currentAmount Decimal                 @default(0.0) @db.Decimal(10, 2) // Накоплено
+  targetDate    DateTime?               // Желаемая дата достижения цели
+  status        PiggyBankStatus         @default(ACTIVE)
+
+  // Владелец копилки (только ребенок!)
+  ownerId       String
+  owner         User                    @relation("OwnerPiggyBanks", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // История пополнений от ребенка и членов семьи
+  contributions PiggyBankContribution[]
+
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+}
+
+model PiggyBankContribution {
+  id          String     @id @default(uuid())
+  amount      Decimal    @db.Decimal(10, 2)
+  comment     String?    // Пожелание / поздравление от члена семьи
+
+  piggyBankId String
+  piggyBank   PiggyBank  @relation(fields: [piggyBankId], references: [id], onDelete: Cascade)
+
+  userId      String     // Кто пополнил (ребенок или родственник)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cardId      String?    // С какой карты списали
+  card        Card?      @relation(fields: [cardId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime   @default(now())
+}
+
+enum PiggyBankStatus {
+  ACTIVE
+  COMPLETED
+  BROKEN
+}
+
 enum UserRole {
   ORDINARY
   PARENT
@@ -163,6 +209,8 @@ enum Category {
   ENTERTAINMENT // Игры, кино, подписки
   RESTRICTED_18 // Азартные игры, алкоголь, табак
   TRANSFER // Переводы между счетами / пополнение от родителей
+  TASK_REWARD // Награда за выполнение заданий
+  SAVINGS // Копилка и накопления
   OTHER
 }
 
@@ -172,3 +220,4 @@ enum TransactionStatus {
   DECLINED_BY_LIMIT // Превышен лимит
   PENDING_PARENT_APPROVAL // Ждет аппрува от родителя
 }
+
