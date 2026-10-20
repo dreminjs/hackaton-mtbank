@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -23,6 +25,8 @@ import {
   CreateTransferRequestResponseDto,
   DeclineTransferRequestDto,
   DeclineTransferRequestResponseDto,
+  FamilyTransactionsFeedResponseDto,
+  MemberTransactionsResponseDto,
   PayQrDto,
   PayQrResponseDto,
   TransferRequestListItemDto,
@@ -126,5 +130,96 @@ export class PaymentsController {
   ) {
     const parentId = req.user.id || req.user.sub;
     return this.paymentsService.declineTransferRequest(parentId, id, dto);
+  }
+
+  @Get('transactions')
+  @ApiOperation({
+    summary: 'История собственных транзакций текущего пользователя',
+    description: 'Возвращает историю платежей и списаний текущего пользователя с фильтрацией.',
+  })
+  @ApiQuery({ name: 'limit', required: false, example: 50, description: 'Количество записей' })
+  @ApiQuery({ name: 'offset', required: false, example: 0, description: 'Смещение' })
+  @ApiQuery({ name: 'cardId', required: false, description: 'Фильтр по карте' })
+  @ApiQuery({ name: 'category', required: false, description: 'Фильтр по категории трат' })
+  @ApiResponse({
+    status: 200,
+    description: 'История личных транзакций',
+    type: MemberTransactionsResponseDto,
+  })
+  async getMyTransactions(
+    @Req() req: any,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('cardId') cardId?: string,
+    @Query('category') category?: string,
+  ) {
+    const userId = req.user.id || req.user.sub;
+    return this.paymentsService.getMyTransactions(userId, {
+      limit,
+      offset,
+      cardId,
+      category,
+    });
+  }
+
+  @Get('transactions/members/:memberId')
+  @ApiOperation({
+    summary: 'История транзакций члена семьи (ребенка или другого родителя)',
+    description:
+      'Позволяет просматривать расходы и операции конкретного члена семьи. Родитель может смотреть транзакции своего ребенка или второго родителя; ребенок может смотреть операции в рамках своей семьи.',
+  })
+  @ApiParam({ name: 'memberId', description: 'ID члена семьи (ребенка или другого родителя)' })
+  @ApiQuery({ name: 'limit', required: false, example: 50, description: 'Количество записей' })
+  @ApiQuery({ name: 'offset', required: false, example: 0, description: 'Смещение' })
+  @ApiQuery({ name: 'cardId', required: false, description: 'Фильтр по карте' })
+  @ApiQuery({ name: 'category', required: false, description: 'Фильтр по категории трат' })
+  @ApiResponse({
+    status: 200,
+    description: 'История транзакций выбранного члена семьи',
+    type: MemberTransactionsResponseDto,
+  })
+  async getMemberTransactions(
+    @Req() req: any,
+    @Param('memberId') memberId: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('cardId') cardId?: string,
+    @Query('category') category?: string,
+  ) {
+    const currentUserId = req.user.id || req.user.sub;
+    return this.paymentsService.getMemberTransactions(currentUserId, memberId, {
+      limit,
+      offset,
+      cardId,
+      category,
+    });
+  }
+
+  @Get('family/transactions')
+  @ApiOperation({
+    summary: 'Общая лента транзакций всей семьи (все дети и родители)',
+    description:
+      'Сводная лента расходов всех членов семьи в хронологическом порядке с указанием того, кто совершил покупку, суммы и магазина.',
+  })
+  @ApiQuery({ name: 'limit', required: false, example: 50, description: 'Количество записей' })
+  @ApiQuery({ name: 'offset', required: false, example: 0, description: 'Смещение' })
+  @ApiQuery({ name: 'category', required: false, description: 'Фильтр по категории трат' })
+  @ApiResponse({
+    status: 200,
+    description: 'Общая семейная лента транзакций',
+    type: FamilyTransactionsFeedResponseDto,
+  })
+  async getFamilyTransactions(
+    @Req() req: any,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('category') category?: string,
+  ) {
+    const currentUserId = req.user.id || req.user.sub;
+    return this.paymentsService.getFamilyTransactions(currentUserId, {
+      limit,
+      offset,
+      category,
+    });
   }
 }

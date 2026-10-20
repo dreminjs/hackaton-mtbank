@@ -229,3 +229,90 @@ export class DeclineTransferRequestResponseDto {
   @ApiProperty({ type: TransferRequestResolvedItemDto })
   transferRequest: TransferRequestResolvedItemDto;
 }
+
+// --- История транзакций членов семьи ---
+
+export class TransactionUserDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 'Иван' })
+  name: string;
+
+  @ApiProperty({ example: '+375291234567', required: false })
+  phoneNumber?: string;
+
+  @ApiProperty({ example: 'CHILD_7_13', required: false })
+  role?: string;
+}
+
+export class TransactionCardSummaryDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: '4258 •••• •••• 1234' })
+  cardNumberMask: string;
+
+  @ApiProperty({ example: 'VIRTUAL', required: false })
+  type?: string;
+}
+
+export class DetailedTransactionDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 15.5 })
+  amount: number;
+
+  @ApiProperty({ example: 'Евроопт' })
+  merchant: string;
+
+  @ApiProperty({ example: 'FOOD' })
+  category: string;
+
+  @ApiProperty({
+    example: 'SUCCESS',
+    enum: [
+      'SUCCESS',
+      'DECLINED_BY_BANK',
+      'DECLINED_BY_LIMIT',
+      'PENDING_PARENT_APPROVAL',
+    ],
+  })
+  status: string;
+
+  @ApiProperty({ type: TransactionUserDto })
+  user: TransactionUserDto;
+
+  @ApiProperty({ type: TransactionCardSummaryDto })
+  card: TransactionCardSummaryDto;
+
+  @ApiProperty({ example: '2026-10-21T02:30:00.000Z' })
+  createdAt: Date;
+}
+
+export class MemberTransactionsResponseDto {
+  @ApiProperty({ type: TransactionUserDto })
+  member: TransactionUserDto;
+
+  @ApiProperty({ example: 145.2 })
+  totalSpent: number;
+
+  @ApiProperty({ example: 8 })
+  transactionCount: number;
+
+  @ApiProperty({ type: [DetailedTransactionDto] })
+  transactions: DetailedTransactionDto[];
+}
+
+export class FamilyTransactionsFeedResponseDto {
+  @ApiProperty({ example: 520.4 })
+  familyTotalSpent: number;
+
+  @ApiProperty({ example: 24 })
+  totalCount: number;
+
+  @ApiProperty({ type: [DetailedTransactionDto] })
+  transactions: DetailedTransactionDto[];
+}
+

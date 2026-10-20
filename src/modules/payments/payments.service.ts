@@ -603,7 +603,7 @@ export class PaymentsService {
       },
     });
 
-    return {
+      return {
       message: 'Запрос на перевод отклонен',
       transferRequest: {
         id: updated.id,
@@ -617,5 +617,268 @@ export class PaymentsService {
       },
     };
   }
+
+  /**
+   * Проверка родственной связи между пользователем и членом семьи
+   * (поддерживает ребенка, родителя, второго родителя / супруга и братьев/сестер)
+   */
+  async verifyFamilyMember(userId: string, targetMemberId: string): Promise<boolean> {
+    if (userId === targetMemberId) {
+      return true;
+    }
+
+    // 1. Прямая связь: родитель -> ребенок
+    const asParent = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId: userId,
+          childId: targetMemberId,
+        },
+      },
+    });
+    if (asParent) return true;
+
+    // 2. Прямая связь: ребенок -> родитель
+    const asChild = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId: targetMemberId,
+          childId: userId,
+        },
+      },
+    });
+    if (asChild) return true;
+
+    // 3. Другой родитель (со-родитель общего ребенка в семье)
+    const myChildren = await this.prisma.familyRelation.findMany({
+      where: { parentId: userId },
+      select: { childId: true },
+    });
+    if (myChildren.length > 0) {
+      const coParent = await this.prisma.familyRelation.findFirst({
+        where: {
+          parentId: targetMemberId,
+          childId: { in: myChildren.map((c) => c.childId) },
+        },
+      });
+      if (coParent) return true;
+    }
+
+    // 4. Братья и сестры (дети общих родителей)
+    const myParents = await this.prisma.familyRelation.findMany({
+      where: { childId: userId },
+      select: { parentId: true },
+    });
+    if (myParents.length > 0) {
+      const sibling = await this.prisma.familyRelation.findFirst({
+        where: {
+          childId: targetMemberId,
+          parentId: { in: myParents.map((p) => p.parentId) },
+        },
+      });
+      if (sibling) return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Преобразование транзакции для UI
+   */
+  private formatTransaction(t: any) {
+    return {
+      id: t.id,
+      amount: Number(t.amount),
+      merchant: t.merchant,
+      category: t.category,
+      status: t.status,
+      user: {
+        id: t.user.id,
+        name: t.user.name,
+        phoneNumber: t.user.phoneNumber,
+        role: t.user.role,
+      },
+      card: {
+        id: t.card.id,
+        cardNumberMask: t.card.cardNumberMask,
+        type: t.card.type,
+      },
+      createdAt: t.createdAt,
+    };
+  }
+
+  /**
+   * Получить историю транзакций конкретного члена семьи (ребенка или другого родителя)
+   */
+  async getMemberTransactions(
+    currentUserId: string,
+    memberId: string,
+    filters?: {
+      limit?: number;
+      offset?: number;
+      cardId?: string;
+      category?: string;
+    },
+  ) {
+    const isFamily = await this.verifyFamilyMember(currentUserId, memberId);
+    if (!isFamily) {
+      throw new ForbiddenException(
+        'Указанный пользователь не является членом вашей семьи',
+      );
+    }
+
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberId },
+      select: { id: true, name: true, phoneNumber: true, role: true },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Член семьи не найден');
+    }
+
+    const whereClause: any = {
+      userId: memberId,
+      ...(filters?.cardId && { cardId: filters.cardId }),
+      ...(filters?.category && { category: filters.category }),
+    };
+
+    const take = filters?.limit ? Math.min(Number(filters.limit), 100) : 50;
+    const skip = filters?.offset ? Number(filters.offset) : 0;
+
+    const [transactions, totalCount] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: whereClause,
+        include: {
+          user: {
+            select: { id: true, name: true, phoneNumber: true, role: true },
+          },
+          card: {
+            select: { id: true, cardNumberMask: true, type: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.transaction.count({ where: whereClause }),
+    ]);
+
+    // Считаем общую сумму расходов по успешным транзакциям
+    const totalSpent = transactions
+      .filter((t) => t.status === TransactionStatus.SUCCESS)
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    return {
+      member,
+      totalSpent: Number(totalSpent.toFixed(2)),
+      transactionCount: totalCount,
+      transactions: transactions.map((t) => this.formatTransaction(t)),
+    };
+  }
+
+  /**
+   * Получить общую ленту расходов всей семьи (все дети и родители)
+   */
+  async getFamilyTransactions(
+    currentUserId: string,
+    filters?: {
+      limit?: number;
+      offset?: number;
+      category?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: currentUserId },
+      include: {
+        childRelations: true,
+        parentRelations: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    let allMemberIds: string[] = [currentUserId];
+
+    const isChild =
+      user.role === UserRole.CHILD_7_13 ||
+      user.role === UserRole.TEEN_14_17 ||
+      !isAdult(new Date(user.birthDay));
+
+    if (!isChild) {
+      // Для родителя: его дети + другие родители этих детей
+      const childIds = user.childRelations.map((rel) => rel.childId);
+      const otherParents = await this.prisma.familyRelation.findMany({
+        where: { childId: { in: childIds } },
+        select: { parentId: true },
+      });
+      allMemberIds = Array.from(
+        new Set([currentUserId, ...childIds, ...otherParents.map((p) => p.parentId)]),
+      );
+    } else {
+      // Для ребенка: его родители + его братья/сестры
+      const parentIds = user.parentRelations.map((rel) => rel.parentId);
+      const siblings = await this.prisma.familyRelation.findMany({
+        where: { parentId: { in: parentIds } },
+        select: { childId: true },
+      });
+      allMemberIds = Array.from(
+        new Set([currentUserId, ...parentIds, ...siblings.map((s) => s.childId)]),
+      );
+    }
+
+    const whereClause: any = {
+      userId: { in: allMemberIds },
+      ...(filters?.category && { category: filters.category }),
+    };
+
+    const take = filters?.limit ? Math.min(Number(filters.limit), 100) : 50;
+    const skip = filters?.offset ? Number(filters.offset) : 0;
+
+    const [transactions, totalCount] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where: whereClause,
+        include: {
+          user: {
+            select: { id: true, name: true, phoneNumber: true, role: true },
+          },
+          card: {
+            select: { id: true, cardNumberMask: true, type: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+      }),
+      this.prisma.transaction.count({ where: whereClause }),
+    ]);
+
+    const familyTotalSpent = transactions
+      .filter((t) => t.status === TransactionStatus.SUCCESS)
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    return {
+      familyTotalSpent: Number(familyTotalSpent.toFixed(2)),
+      totalCount,
+      transactions: transactions.map((t) => this.formatTransaction(t)),
+    };
+  }
+
+  /**
+   * Получить собственные транзакции текущего пользователя
+   */
+  async getMyTransactions(
+    currentUserId: string,
+    filters?: {
+      limit?: number;
+      offset?: number;
+      cardId?: string;
+      category?: string;
+    },
+  ) {
+    return this.getMemberTransactions(currentUserId, currentUserId, filters);
+  }
 }
+
 
