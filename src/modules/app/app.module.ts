@@ -11,6 +11,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { UsersModule } from '../users/users.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { PiggyBanksModule } from '../piggy-banks/piggy-banks.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { PiggyBanksModule } from '../piggy-banks/piggy-banks.module';
     UsersModule,
     TasksModule,
     PiggyBanksModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

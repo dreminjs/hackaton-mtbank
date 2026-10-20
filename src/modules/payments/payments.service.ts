@@ -14,13 +14,19 @@ import type {
 import { resolveMcc } from './payments.constants';
 import { isAdult } from '../../common/isAdult.helper';
 import {
+  NotificationType,
   TransactionStatus,
   TransferRequestStatus,
   UserRole,
 } from '#generated/prisma';
+import { NotificationsService } from '../notifications/notifications.service';
+
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async payByQr(userId: string, dto: PayQrDto) {
     const user = await this.prisma.user.findUnique({
@@ -82,6 +88,25 @@ export class PaymentsService {
         },
       });
 
+      // Отправляем экстренное уведомление родителям (HTTP + Socket.IO)
+      await this.notificationsService.notifyParents(user.id, {
+        type: NotificationType.RESTRICTED_18_PURCHASE,
+        title: '⚠️ Попытка покупки 18+ товара!',
+        message: `Ребенок ${user.name} пытался оплатить товар категории «${mccInfo.label}» (18+) в магазине «${dto.merchant}» на сумму ${totalAmount.toFixed(2)} BYN. Покупка заблокирована банком.`,
+        data: {
+          childId: user.id,
+          childName: user.name,
+          merchant: dto.merchant,
+          itemName: restrictedItem.name,
+          mcc: restrictedItem.mcc,
+          category: mccInfo.category,
+          amount: totalAmount,
+          transactionId: declinedTx.id,
+          cardId: card.id,
+          cardMask: card.cardNumberMask,
+        },
+      });
+
       throw new ForbiddenException({
         status: TransactionStatus.DECLINED_BY_BANK,
         message: `Защита МТБанка: в корзине найден товар категории «${mccInfo.label}» (18+), запрещенной для детских карт.`,
@@ -89,7 +114,36 @@ export class PaymentsService {
       });
     }
 
-    // 3. ПРОВЕРКА БАЛАНСА
+    // 3. ПРОВЕРКА ПОКУПКИ В НОЧНОЕ ВРЕМЯ (ПОСЛЕ 23:00 И ДО 06:00)
+    const now = new Date();
+    const minskHour = (now.getUTCHours() + 3) % 24; // Часовой пояс Минска (UTC+3)
+    const isNightPurchase = minskHour >= 23 || minskHour < 6;
+
+    if (isMinor && isNightPurchase) {
+      const timeStr = now.toLocaleTimeString('ru-RU', {
+        timeZone: 'Europe/Minsk',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      // Отправляем уведомление родителям о ночной активности (HTTP + Socket.IO)
+      await this.notificationsService.notifyParents(user.id, {
+        type: NotificationType.NIGHT_PURCHASE,
+        title: '🌙 Покупка в ночное время (после 23:00)',
+        message: `Ребенок ${user.name} совершает покупку в магазине «${dto.merchant}» на сумму ${totalAmount.toFixed(2)} BYN в ночное время (${timeStr}).`,
+        data: {
+          childId: user.id,
+          childName: user.name,
+          merchant: dto.merchant,
+          amount: totalAmount,
+          cardId: card.id,
+          cardMask: card.cardNumberMask,
+          time: timeStr,
+        },
+      });
+    }
+
+    // 4. ПРОВЕРКА БАЛАНСА
     const currentBalance = Number(card.balance);
     if (currentBalance < totalAmount) {
       throw new BadRequestException({
@@ -98,7 +152,7 @@ export class PaymentsService {
       });
     }
 
-    // 4. ПРОВЕРКА РОДИТЕЛЬСКОГО ДНЕВНОГО ЛИМИТА
+    // 5. ПРОВЕРКА РОДИТЕЛЬСКОГО ДНЕВНОГО ЛИМИТА
     const spentToday = Number(card.spentToday);
     const dailyLimit = Number(card.dailyLimit);
 
@@ -123,6 +177,21 @@ export class PaymentsService {
           });
         }),
       );
+
+      // Уведомляем родителей о превышении лимита (HTTP + Socket.IO)
+      await this.notificationsService.notifyParents(user.id, {
+        type: NotificationType.LIMIT_EXCEEDED,
+        title: '🛑 Превышение дневного лимита по карте',
+        message: `Ребенок ${user.name} пытается совершить покупку в «${dto.merchant}» на ${totalAmount.toFixed(2)} BYN, что превышает дневной лимит (${dailyLimit} BYN). Запрос ожидает подтверждения.`,
+        data: {
+          childId: user.id,
+          childName: user.name,
+          merchant: dto.merchant,
+          amount: totalAmount,
+          dailyLimit,
+          spentToday,
+        },
+      });
 
       return {
         status: TransactionStatus.PENDING_PARENT_APPROVAL,

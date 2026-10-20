@@ -30,6 +30,8 @@ model User {
   completedTasks           Task[]            @relation("CompletedTasks")
   piggyBanks               PiggyBank[]       @relation("OwnerPiggyBanks")
   piggyBankContributions   PiggyBankContribution[]
+  notifications            Notification[]    @relation("UserNotifications")
+  childNotifications       Notification[]    @relation("ChildNotifications")
 
   createdAt                DateTime          @default(now())
   updatedAt                DateTime          @updatedAt
@@ -220,4 +222,33 @@ enum TransactionStatus {
   DECLINED_BY_LIMIT // Превышен лимит
   PENDING_PARENT_APPROVAL // Ждет аппрува от родителя
 }
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+
+  // Получатель уведомления (родитель)
+  userId    String
+  user      User             @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  // Ребенок, совершивший действие
+  childId   String?
+  child     User?            @relation("ChildNotifications", fields: [childId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  RESTRICTED_18_PURCHASE // Попытка покупки товара 18+ (алкоголь, табак, казино)
+  NIGHT_PURCHASE         // Покупка в ночное время (после 23:00)
+  LIMIT_EXCEEDED         // Превышен суточный лимит
+  TRANSFER_REQUEST       // Запрос на перевод денег
+  TASK_SUBMITTED         // Задание сдано на проверку
+  PIGGY_BANK_TOPUP       // Пополнение копилки
+}
+
 
