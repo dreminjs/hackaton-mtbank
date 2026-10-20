@@ -15,15 +15,24 @@ export class PrismaService
   private logger = new Logger(PrismaService.name);
 
   constructor() {
+    const connectionString =
+      process.env.DATABASE_URL ||
+      'postgresql://neondb_owner:npg_cG5kUqu9dSyv@ep-solitary-fog-b95pbiol-pooler.c-7.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require';
+
     const adapter = new PrismaPg({
-      connectionString: process.env.DATABASE_URL,
+      connectionString,
       ssl: { rejectUnauthorized: false },
     });
     super({ adapter });
   }
 
   async onModuleInit() {
-    await this.$connect();
+    try {
+      await this.$connect();
+      this.logger.log('Prisma connected to PostgreSQL successfully');
+    } catch (err) {
+      this.logger.error('Failed to connect to database during init', err);
+    }
   }
 
   async onModuleDestroy() {
