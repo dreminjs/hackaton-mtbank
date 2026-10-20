@@ -19,3 +19,16 @@ export class LinkChildDto extends createZodDto(LinkChildSchema) {}
 
 export type AddChildInput = z.infer<typeof AddChildSchema>;
 export type LinkChildInput = z.infer<typeof LinkChildSchema>;
+
+export const UpdateCardLimitsSchema = z.object({
+  dailyLimit: z
+    .number()
+    .gte(0, 'Ежедневный лимит не может быть отрицательным')
+    .describe('Ежедневный лимит на сумму покупок в BYN'),
+  allowOnlinePurchases: z.boolean().optional().describe('Разрешить онлайн-покупки'),
+  allowCashWithdrawal: z.boolean().optional().describe('Разрешить снятие наличных'),
+  isBlocked: z.boolean().optional().describe('Заблокировать / разблокировать карту'),
+});
+
+export class UpdateCardLimitsDto extends createZodDto(UpdateCardLimitsSchema) {}
+export type UpdateCardLimitsInput = z.infer<typeof UpdateCardLimitsSchema>;

@@ -1,12 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { AddChildDto, LinkChildDto } from './users.dto';
+import { AddChildDto, LinkChildDto, UpdateCardLimitsDto } from './users.dto';
 import { resolveChildRole } from '../../common/isAdult.helper';
 
 import { PassportService } from '../passport/passport.service';
@@ -306,6 +307,267 @@ export class UsersService {
         role: rel.child.role,
         cards: rel.child.cards,
       })),
+    };
+  }
+
+  /**
+   * Удалить ребенка из семьи (вызывается родителем)
+   */
+  async removeChild(parentId: string, childId: string) {
+    const relation = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId,
+          childId,
+        },
+      },
+      include: {
+        child: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!relation) {
+      throw new NotFoundException('Связь с ребенком не найдена в вашей семье');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Удаляем связь родитель-ребенок
+      await tx.familyRelation.delete({
+        where: {
+          parentId_childId: {
+            parentId,
+            childId,
+          },
+        },
+      });
+
+      // 2. Проверяем, остались ли у родителя еще дети
+      const remainingChildren = await tx.familyRelation.count({
+        where: { parentId },
+      });
+
+      // Если других детей нет, сбрасываем роль PARENT на ORDINARY
+      if (remainingChildren === 0) {
+        await tx.user.update({
+          where: { id: parentId },
+          data: { role: UserRole.ORDINARY },
+        });
+      }
+    });
+
+    return {
+      message: `Ребенок ${relation.child.name} успешно удален из семьи`,
+      childId,
+    };
+  }
+
+  /**
+   * Отвязать родителя от ребенка (вызывается ребенком)
+   */
+  async removeParent(childId: string, parentId: string) {
+    const relation = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId,
+          childId,
+        },
+      },
+      include: {
+        parent: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!relation) {
+      throw new NotFoundException('Связь с указанным родителем не найдена');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Удаляем связь родитель-ребенок
+      await tx.familyRelation.delete({
+        where: {
+          parentId_childId: {
+            parentId,
+            childId,
+          },
+        },
+      });
+
+      // 2. Проверяем, остались ли у родителя еще дети
+      const remainingChildren = await tx.familyRelation.count({
+        where: { parentId },
+      });
+
+      // Если других детей нет, сбрасываем роль PARENT на ORDINARY
+      if (remainingChildren === 0) {
+        await tx.user.update({
+          where: { id: parentId },
+          data: { role: UserRole.ORDINARY },
+        });
+      }
+    });
+
+    return {
+      message: `Родитель ${relation.parent.name} успешно отвязан`,
+      parentId,
+    };
+  }
+
+  /**
+   * Универсальный метод удаления члена семьи (ребенка или родителя)
+   */
+  async removeFamilyMember(currentUserId: string, memberId: string) {
+    // 1. Проверяем, является ли текущий пользователь родителем для memberId
+    const asParent = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId: currentUserId,
+          childId: memberId,
+        },
+      },
+    });
+
+    if (asParent) {
+      return this.removeChild(currentUserId, memberId);
+    }
+
+    // 2. Проверяем, является ли текущий пользователь ребенком для memberId
+    const asChild = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId: memberId,
+          childId: currentUserId,
+        },
+      },
+    });
+
+    if (asChild) {
+      return this.removeParent(currentUserId, memberId);
+    }
+
+    throw new NotFoundException('Связь между указанными членами семьи не найдена');
+  }
+
+  /**
+   * Установить лимиты для покупок на карту ребенка (для родителя)
+   */
+  async updateCardLimits(parentId: string, cardId: string, dto: UpdateCardLimitsDto) {
+    const card = await this.prisma.card.findUnique({
+      where: { id: cardId },
+      include: {
+        user: true,
+      },
+    });
+
+    if (!card) {
+      throw new NotFoundException('Карта не найдена');
+    }
+
+    // Проверяем, что текущий пользователь является родителем владельца карты
+    const relation = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId,
+          childId: card.userId,
+        },
+      },
+    });
+
+    if (!relation) {
+      throw new ForbiddenException(
+        'Вы можете устанавливать лимиты только для карт своих детей',
+      );
+    }
+
+    const updatedCard = await this.prisma.card.update({
+      where: { id: cardId },
+      data: {
+        dailyLimit: dto.dailyLimit,
+        ...(dto.allowOnlinePurchases !== undefined && {
+          allowOnlinePurchases: dto.allowOnlinePurchases,
+        }),
+        ...(dto.allowCashWithdrawal !== undefined && {
+          allowCashWithdrawal: dto.allowCashWithdrawal,
+        }),
+        ...(dto.isBlocked !== undefined && {
+          isBlocked: dto.isBlocked,
+        }),
+      },
+    });
+
+    const dailyLimit = Number(updatedCard.dailyLimit);
+    const spentToday = Number(updatedCard.spentToday);
+
+    return {
+      message: `Лимит для карты ребенка ${card.user.name} успешно обновлен`,
+      card: {
+        id: updatedCard.id,
+        cardNumberMask: updatedCard.cardNumberMask,
+        cardholderName: updatedCard.cardholderName,
+        childName: card.user.name,
+        type: updatedCard.type,
+        balance: Number(updatedCard.balance),
+        dailyLimit,
+        spentToday,
+        remainingDailyLimit: Math.max(0, dailyLimit - spentToday),
+        allowOnlinePurchases: updatedCard.allowOnlinePurchases,
+        allowCashWithdrawal: updatedCard.allowCashWithdrawal,
+        isBlocked: updatedCard.isBlocked,
+      },
+    };
+  }
+
+  /**
+   * Сбросить потраченную за сегодня сумму на карте ребенка
+   */
+  async resetSpentToday(parentId: string, cardId: string) {
+    const card = await this.prisma.card.findUnique({
+      where: { id: cardId },
+      include: { user: true },
+    });
+
+    if (!card) {
+      throw new NotFoundException('Карта не найдена');
+    }
+
+    const relation = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId,
+          childId: card.userId,
+        },
+      },
+    });
+
+    if (!relation) {
+      throw new ForbiddenException(
+        'Вы можете управлять картами только своих детей',
+      );
+    }
+
+    const updatedCard = await this.prisma.card.update({
+      where: { id: cardId },
+      data: { spentToday: 0 },
+    });
+
+    return {
+      message: `Потраченная сумма за сегодня для карты ${card.user.name} сброшена`,
+      card: {
+        id: updatedCard.id,
+        cardNumberMask: updatedCard.cardNumberMask,
+        dailyLimit: Number(updatedCard.dailyLimit),
+        spentToday: 0,
+        remainingDailyLimit: Number(updatedCard.dailyLimit),
+      },
     };
   }
 }

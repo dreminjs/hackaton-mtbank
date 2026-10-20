@@ -20,7 +20,6 @@ export class PrismaService
       ssl: { rejectUnauthorized: false },
     });
     super({ adapter });
-    this.logger.log(process.env.DATABASE_URL);
   }
 
   async onModuleInit() {
