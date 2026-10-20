@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                  String        @id @default(uuid())
+  phoneNumber         String        @unique
+  firstName           String
+  lastName            String
+  birthDay            DateTime
+  role                UserRole
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  cards               Card[]
+  transactions        Transaction[]
+}
+
+model Card {
+  id                    String  @id @default(uuid())
+  cardNumberMask        String // например: "4258 •••• •••• 1234"
+  cardholderName        String // "ANDREW DREMIN"
+  expiryDate            String // "10/28"
+  type                  String // "VIRTUAL" или "PHYSICAL"
+  balance               Decimal @default(0.0) @db.Decimal(10, 2)
+  isBlocked             Boolean @default(false)
+
+  dailyLimit            Decimal @default(15.0) @db.Decimal(10, 2)
+  spentToday            Decimal @default(0.0) @db.Decimal(10, 2)
+
+  allowOnlinePurchases  Boolean @default(true)
+  allowCashWithdrawal   Boolean @default(false)
+
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+}
+
+model Transaction {
+  id            String            @id @default(uuid())
+  amount        Decimal           @db.Decimal(10, 2)
+  merchant      String
+  category      String
+  status        TransactionStatus @default(SUCCESS)
+  // declineReason String?
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  card      Card     @relation(fields: [cardId], references: [id])
+  cardId    String
+  createdAt DateTime @default(now())
+}
+
+enum UserRole {
+  PARENT
+  CHILD_7_13
+  TEEN_14_17
+}
+
+enum Category {
+  FOOD // Столовая, кафе
+  TRANSPORT // Проезд, такси
+  EDUCATION // Книги, канцелярия, курсы[cite: 6, 8]
+  ENTERTAINMENT // Игры, кино, подписки[cite: 2, 6, 8]
+  RESTRICTED_18 // Азартные игры, алкоголь, табак[cite: 7]
+  OTHER
+}
+
+enum TransactionStatus {
+  SUCCESS
+  DECLINED_BY_BANK // Блокировка 18+, казино и т.д.[cite: 7]
+  DECLINED_BY_LIMIT // Превышен лимит[cite: 7]
+  PENDING_PARENT_APPROVAL // Ждет аппрува от родителя
+}
