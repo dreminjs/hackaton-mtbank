@@ -1,0 +1,9 @@
+-- AlterEnum
+ALTER TYPE "UserRole" ADD VALUE 'ORDINARY';
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "parentId" TEXT,
+ALTER COLUMN "role" SET DEFAULT 'ORDINARY';
+
+-- AddForeignKey
+ALTER TABLE "User" ADD CONSTRAINT "User_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

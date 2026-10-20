@@ -13,19 +13,23 @@ datasource db {
 }
 
 model User {
-  id                  String        @id @default(uuid())
-  phoneNumber         String        @unique
-  name                String
-  birthDay            DateTime
-  password            String
-  role                UserRole
-  hashedRefreshToken  String?
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  cards               Card[]
-  transactions        Transaction[]
-}
+  id                 String        @id @default(uuid())
+  phoneNumber        String        @unique
+  name               String
+  birthDay           DateTime
+  password           String
+  role               UserRole      @default(ORDINARY)
+  hashedRefreshToken String?
 
+  parentId           String?
+  parent             User?         @relation("FamilyRelation", fields: [parentId], references: [id])
+  children           User[]        @relation("FamilyRelation")
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  cards              Card[]
+  transactions       Transaction[]
+}
 model Card {
   id                    String  @id @default(uuid())
   cardNumberMask        String // например: "4258 •••• •••• 1234"
@@ -62,6 +66,7 @@ model Transaction {
 }
 
 enum UserRole {
+  ORDINARY
   PARENT
   CHILD_7_13
   TEEN_14_17
