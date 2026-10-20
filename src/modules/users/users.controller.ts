@@ -22,7 +22,17 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
-import { AddChildDto, LinkChildDto, UpdateCardLimitsDto } from './users.dto';
+import {
+  AddChildDto,
+  LinkChildDto,
+  UpdateCardLimitsDto,
+  AddChildResponseDto,
+  LinkChildResponseDto,
+  FamilyResponseDto,
+  DeleteFamilyMemberResponseDto,
+  UpdateCardLimitsResponseDto,
+  ResetSpentTodayResponseDto,
+} from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @ApiTags('users / family')
@@ -38,7 +48,11 @@ export class UsersController {
     description:
       'Создает аккаунт ребенка, выпускает виртуальную карту, назначает роль CHILD_7_13 или TEEN_14_17 в зависимости от возраста, а родителю выставляет роль PARENT.',
   })
-  @ApiResponse({ status: 201, description: 'Ребенок успешно зарегистрирован' })
+  @ApiResponse({
+    status: 201,
+    description: 'Ребенок успешно зарегистрирован',
+    type: AddChildResponseDto,
+  })
   async addChild(@Req() req: any, @Body() dto: AddChildDto) {
     const parentId = req.user.id || req.user.sub;
     return this.usersService.addChild(parentId, dto);
@@ -66,7 +80,11 @@ export class UsersController {
       required: ['phoneNumber'],
     },
   })
-  @ApiResponse({ status: 200, description: 'Ребенок успешно привязан после проверки паспорта' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ребенок успешно привязан после проверки паспорта',
+    type: LinkChildResponseDto,
+  })
   @ApiResponse({ status: 400, description: 'Несовпадение имени в паспорте или невалидные данные' })
   async linkChild(
     @Req() req: any,
@@ -79,9 +97,13 @@ export class UsersController {
 
   @Get('family')
   @ApiOperation({
-    summary: 'Получить информацию о семье (родитель, дети и их карты)',
+    summary: 'Получить информацию о семье (родители, дети и их карты)',
   })
-  @ApiResponse({ status: 200, description: 'Информация о семье получена' })
+  @ApiResponse({
+    status: 200,
+    description: 'Информация о семье получена',
+    type: FamilyResponseDto,
+  })
   async getFamily(@Req() req: any) {
     const userId = req.user.id || req.user.sub;
     return this.usersService.getFamily(userId);
@@ -94,7 +116,11 @@ export class UsersController {
       'Родитель отвязывает ребенка от своего аккаунта. Если у родителя больше нет других детей, его роль возвращается в ORDINARY.',
   })
   @ApiParam({ name: 'childId', description: 'ID ребенка' })
-  @ApiResponse({ status: 200, description: 'Ребенок успешно удален из семьи' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ребенок успешно удален из семьи',
+    type: DeleteFamilyMemberResponseDto,
+  })
   async removeChild(@Req() req: any, @Param('childId') childId: string) {
     const parentId = req.user.id || req.user.sub;
     return this.usersService.removeChild(parentId, childId);
@@ -107,7 +133,11 @@ export class UsersController {
       'Ребенок отвязывает конкретного родителя от своего профиля.',
   })
   @ApiParam({ name: 'parentId', description: 'ID родителя' })
-  @ApiResponse({ status: 200, description: 'Родитель успешно отвязан' })
+  @ApiResponse({
+    status: 200,
+    description: 'Родитель успешно отвязан',
+    type: DeleteFamilyMemberResponseDto,
+  })
   async removeParent(@Req() req: any, @Param('parentId') parentId: string) {
     const childId = req.user.id || req.user.sub;
     return this.usersService.removeParent(childId, parentId);
@@ -120,7 +150,11 @@ export class UsersController {
       'Автоматически определяет отношение между текущим пользователем и memberId (родитель-ребенок или ребенок-родитель) и удаляет связь.',
   })
   @ApiParam({ name: 'memberId', description: 'ID удаляемого члена семьи' })
-  @ApiResponse({ status: 200, description: 'Член семьи успешно удален' })
+  @ApiResponse({
+    status: 200,
+    description: 'Член семьи успешно удален',
+    type: DeleteFamilyMemberResponseDto,
+  })
   async removeFamilyMember(@Req() req: any, @Param('memberId') memberId: string) {
     const currentUserId = req.user.id || req.user.sub;
     return this.usersService.removeFamilyMember(currentUserId, memberId);
@@ -133,7 +167,11 @@ export class UsersController {
       'Позволяет родителю задать суточный лимит расходов (в BYN) на покупки по карте ребенка, а также включить/отключить онлайн-платежи, снятие наличных или блокировку карты.',
   })
   @ApiParam({ name: 'cardId', description: 'ID карты ребенка' })
-  @ApiResponse({ status: 200, description: 'Лимиты карты успешно обновлены' })
+  @ApiResponse({
+    status: 200,
+    description: 'Лимиты карты успешно обновлены',
+    type: UpdateCardLimitsResponseDto,
+  })
   async updateCardLimits(
     @Req() req: any,
     @Param('cardId') cardId: string,
@@ -150,7 +188,11 @@ export class UsersController {
       'Обнуляет spentToday на карте ребенка, возвращая доступный остаток дневного лимита к полному значению dailyLimit.',
   })
   @ApiParam({ name: 'cardId', description: 'ID карты ребенка' })
-  @ApiResponse({ status: 200, description: 'Потраченная за сегодня сумма успешно сброшена' })
+  @ApiResponse({
+    status: 200,
+    description: 'Потраченная за сегодня сумма успешно сброшена',
+    type: ResetSpentTodayResponseDto,
+  })
   async resetSpentToday(@Req() req: any, @Param('cardId') cardId: string) {
     const parentId = req.user.id || req.user.sub;
     return this.usersService.resetSpentToday(parentId, cardId);

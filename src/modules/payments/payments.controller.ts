@@ -18,9 +18,14 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PaymentsService } from './payments.service';
 import {
   ApproveTransferRequestDto,
+  ApproveTransferRequestResponseDto,
   CreateTransferRequestDto,
+  CreateTransferRequestResponseDto,
   DeclineTransferRequestDto,
+  DeclineTransferRequestResponseDto,
   PayQrDto,
+  PayQrResponseDto,
+  TransferRequestListItemDto,
 } from './payments.dto';
 
 @ApiTags('payments')
@@ -36,7 +41,11 @@ export class PaymentsController {
     description:
       'Проверяет категорию товаров, возраст ребенка и суточный лимит. При превышении отправляет на аппрув родителям.',
   })
-  @ApiResponse({ status: 200, description: 'Результат оплаты' })
+  @ApiResponse({
+    status: 200,
+    description: 'Результат оплаты',
+    type: PayQrResponseDto,
+  })
   async payByQr(@Req() req: any, @Body() dto: PayQrDto) {
     const userId = req.user.id || req.user.sub;
     return this.paymentsService.payByQr(userId, dto);
@@ -48,7 +57,11 @@ export class PaymentsController {
     description:
       'Ребенок указывает сумму, карту для зачисления и комментарий (зачем нужны деньги: на кино, обед, книги и т.д.). Запрос становится доступен всем привязанным родителям.',
   })
-  @ApiResponse({ status: 201, description: 'Запрос на перевод успешно создан' })
+  @ApiResponse({
+    status: 201,
+    description: 'Запрос на перевод успешно создан',
+    type: CreateTransferRequestResponseDto,
+  })
   async createTransferRequest(
     @Req() req: any,
     @Body() dto: CreateTransferRequestDto,
@@ -63,7 +76,11 @@ export class PaymentsController {
     description:
       'Если авторизован ребенок — возвращает его созданные запросы со статусами. Если родитель — возвращает запросы всех его детей.',
   })
-  @ApiResponse({ status: 200, description: 'Список запросов на перевод' })
+  @ApiResponse({
+    status: 200,
+    description: 'Список запросов на перевод',
+    type: [TransferRequestListItemDto],
+  })
   async getTransferRequests(@Req() req: any) {
     const userId = req.user.id || req.user.sub;
     return this.paymentsService.getTransferRequests(userId);
@@ -76,7 +93,11 @@ export class PaymentsController {
       'Родитель подтверждает перевод. Деньги атомарно списываются с карты родителя и зачисляются на карту ребенка, создаются истории транзакций.',
   })
   @ApiParam({ name: 'id', description: 'ID запроса на перевод' })
-  @ApiResponse({ status: 200, description: 'Перевод успешно выполнен' })
+  @ApiResponse({
+    status: 200,
+    description: 'Перевод успешно выполнен',
+    type: ApproveTransferRequestResponseDto,
+  })
   async approveTransferRequest(
     @Req() req: any,
     @Param('id') id: string,
@@ -93,7 +114,11 @@ export class PaymentsController {
       'Родитель отклоняет запрос с указанием причины (опционально).',
   })
   @ApiParam({ name: 'id', description: 'ID запроса на перевод' })
-  @ApiResponse({ status: 200, description: 'Запрос отклонен' })
+  @ApiResponse({
+    status: 200,
+    description: 'Запрос отклонен',
+    type: DeclineTransferRequestResponseDto,
+  })
   async declineTransferRequest(
     @Req() req: any,
     @Param('id') id: string,

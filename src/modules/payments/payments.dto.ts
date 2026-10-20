@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import z from 'zod';
+import { ApiProperty } from '@nestjs/swagger';
 
 export const PayQrItemSchema = z.object({
   name: z.string().optional(),
@@ -10,7 +11,6 @@ export const PayQrItemSchema = z.object({
 export const PayQrSchema = z.object({
   merchant: z.string().min(1, 'Merchant is required'),
   cardId: z.string().optional(),
-  // Либо список товаров, либо одиночный платеж (для обратной совместимости)
   items: z.array(PayQrItemSchema).min(1, 'At least 1 item is required').optional(),
   mcc: z.string().optional(),
   amount: z.number().gte(0.01, 'Amount must be at least 1 kopek').optional(),
@@ -52,3 +52,180 @@ export const DeclineTransferRequestSchema = z.object({
 export class DeclineTransferRequestDto extends createZodDto(DeclineTransferRequestSchema) { }
 export type TDeclineTransferRequestDto = z.infer<typeof DeclineTransferRequestSchema>;
 
+// --- Swagger Response Models ---
+
+export class TransactionItemDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 12.5 })
+  amount: number;
+
+  @ApiProperty({ example: 'Школьная столовая' })
+  merchant: string;
+
+  @ApiProperty({ example: 'FOOD' })
+  category: string;
+
+  @ApiProperty({ example: 'SUCCESS' })
+  status: string;
+
+  @ApiProperty({ example: '2026-10-21T00:30:00.000Z' })
+  createdAt: Date;
+}
+
+export class PayQrResponseDto {
+  @ApiProperty({ example: 'SUCCESS' })
+  status: string;
+
+  @ApiProperty({ example: 'Оплата прошла успешно!' })
+  message: string;
+
+  @ApiProperty({ example: 12.5 })
+  totalAmount: number;
+
+  @ApiProperty({ example: 87.5 })
+  newBalance: number;
+
+  @ApiProperty({ example: 12.5 })
+  spentToday: number;
+
+  @ApiProperty({ example: 25.0 })
+  dailyLimit: number;
+
+  @ApiProperty({ type: [TransactionItemDto] })
+  transactions: TransactionItemDto[];
+}
+
+export class TransferRequestCardDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: '4258 •••• •••• 1234' })
+  cardNumberMask: string;
+
+  @ApiProperty({ example: 'ИВАН ДРЁМИН', required: false })
+  cardholderName?: string;
+
+  @ApiProperty({ example: 'VIRTUAL', required: false })
+  type?: string;
+
+  @ApiProperty({ example: 50.0, required: false })
+  balance?: number;
+}
+
+export class TransferRequestCreatedItemDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 15.0 })
+  amount: number;
+
+  @ApiProperty({ example: 'На обед в столовой' })
+  comment: string;
+
+  @ApiProperty({ example: 'PENDING' })
+  status: string;
+
+  @ApiProperty({ example: '2026-10-21T00:30:00.000Z' })
+  createdAt: Date;
+
+  @ApiProperty({ type: TransferRequestCardDto })
+  card: TransferRequestCardDto;
+}
+
+export class CreateTransferRequestResponseDto {
+  @ApiProperty({ example: 'Запрос на перевод денег успешно отправлен родителям' })
+  message: string;
+
+  @ApiProperty({ type: TransferRequestCreatedItemDto })
+  transferRequest: TransferRequestCreatedItemDto;
+}
+
+export class TransferRequestUserShortDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 'Иван' })
+  name: string;
+
+  @ApiProperty({ example: '+375291234567', required: false })
+  phoneNumber?: string;
+}
+
+export class TransferRequestListItemDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 15.0 })
+  amount: number;
+
+  @ApiProperty({ example: 'На обед в столовой' })
+  comment: string;
+
+  @ApiProperty({ example: 'PENDING' })
+  status: string;
+
+  @ApiProperty({ example: 'Недостаточно средств', required: false, nullable: true })
+  declineReason?: string | null;
+
+  @ApiProperty({ example: '2026-10-21T00:30:00.000Z' })
+  createdAt: Date;
+
+  @ApiProperty({ example: '2026-10-21T00:30:00.000Z' })
+  updatedAt: Date;
+
+  @ApiProperty({ type: TransferRequestUserShortDto, required: false })
+  child?: TransferRequestUserShortDto;
+
+  @ApiProperty({ type: TransferRequestCardDto })
+  card: TransferRequestCardDto;
+
+  @ApiProperty({ type: TransferRequestUserShortDto, required: false, nullable: true })
+  resolvedBy?: TransferRequestUserShortDto | null;
+}
+
+export class TransferRequestResolvedItemDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 15.0 })
+  amount: number;
+
+  @ApiProperty({ example: 'На обед в столовой' })
+  comment: string;
+
+  @ApiProperty({ example: 'APPROVED' })
+  status: string;
+
+  @ApiProperty({ required: false })
+  declineReason?: string;
+
+  @ApiProperty({ type: TransferRequestUserShortDto, required: false })
+  child?: TransferRequestUserShortDto;
+
+  @ApiProperty({ type: TransferRequestCardDto })
+  card: TransferRequestCardDto;
+
+  @ApiProperty({ example: 250.0, required: false })
+  parentCardBalance?: number;
+
+  @ApiProperty({ type: TransferRequestUserShortDto, required: false, nullable: true })
+  resolvedBy?: TransferRequestUserShortDto | null;
+}
+
+export class ApproveTransferRequestResponseDto {
+  @ApiProperty({ example: 'Перевод успешно отправлен ребенку' })
+  message: string;
+
+  @ApiProperty({ type: TransferRequestResolvedItemDto })
+  transferRequest: TransferRequestResolvedItemDto;
+}
+
+export class DeclineTransferRequestResponseDto {
+  @ApiProperty({ example: 'Запрос на перевод отклонен' })
+  message: string;
+
+  @ApiProperty({ type: TransferRequestResolvedItemDto })
+  transferRequest: TransferRequestResolvedItemDto;
+}
