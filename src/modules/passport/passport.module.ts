@@ -4,6 +4,7 @@ import { PassportService } from './passport.service';
 
 @Module({
   controllers: [PassportController],
-  providers: [PassportService]
+  providers: [PassportService],
+  exports: [PassportService],
 })
 export class PassportModule {}

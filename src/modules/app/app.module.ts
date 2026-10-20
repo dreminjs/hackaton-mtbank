@@ -8,13 +8,15 @@ import { AuthModule } from '../auth/auth.module';
 import { PassportModule } from '../passport/passport.module';
 import { PaymentsModule } from '../payments/payments.module';
 
+import { UsersModule } from '../users/users.module';
+
 @Module({
   imports: [
     PrismaModule,
     AuthModule,
-    PrismaModule,
     PassportModule,
     PaymentsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -25,4 +27,4 @@ import { PaymentsModule } from '../payments/payments.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

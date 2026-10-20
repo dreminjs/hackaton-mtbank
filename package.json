@@ -5,13 +5,23 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "imports": {
+    "#generated/prisma": {
+      "types": "./generated/prisma/index.d.ts",
+      "default": "./generated/prisma/index.js"
+    },
+    "#generated/prisma/*": {
+      "types": "./generated/prisma/*.d.ts",
+      "default": "./generated/prisma/*.js"
+    }
+  },
   "scripts": {
-   "build": "prisma generate && nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "build": "prisma generate && nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/* .ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",

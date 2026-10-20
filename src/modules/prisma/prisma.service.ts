@@ -5,14 +5,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../../../generated/prisma/client';
 import 'dotenv/config';
+import { PrismaClient } from '#generated/prisma';
 
 @Injectable()
 export class PrismaService
   extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+  implements OnModuleInit, OnModuleDestroy {
   private logger = new Logger(PrismaService.name);
 
   constructor() {

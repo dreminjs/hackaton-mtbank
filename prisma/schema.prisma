@@ -21,14 +21,27 @@ model User {
   role               UserRole      @default(ORDINARY)
   hashedRefreshToken String?
 
-  parentId           String?
-  parent             User?         @relation("FamilyRelation", fields: [parentId], references: [id])
-  children           User[]        @relation("FamilyRelation")
+  childRelations           FamilyRelation[]  @relation("ParentRelations")
+  parentRelations          FamilyRelation[]  @relation("ChildRelations")
+  childTransferRequests    TransferRequest[] @relation("ChildTransferRequests")
+  resolvedTransferRequests TransferRequest[] @relation("ResolvedTransferRequests")
 
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  cards              Card[]
-  transactions       Transaction[]
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  cards                    Card[]
+  transactions             Transaction[]
+}
+
+model FamilyRelation {
+  id        String   @id @default(uuid())
+  parentId  String
+  childId   String
+  createdAt DateTime @default(now())
+
+  parent    User     @relation("ParentRelations", fields: [parentId], references: [id], onDelete: Cascade)
+  child     User     @relation("ChildRelations", fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, childId])
 }
 model Card {
   id                    String  @id @default(uuid())
@@ -45,9 +58,10 @@ model Card {
   allowOnlinePurchases  Boolean @default(true)
   allowCashWithdrawal   Boolean @default(false)
 
-  userId       String
-  user         User          @relation(fields: [userId], references: [id])
-  transactions Transaction[]
+  userId           String
+  user             User              @relation(fields: [userId], references: [id])
+  transactions     Transaction[]
+  transferRequests TransferRequest[]
 }
 
 model Transaction {
@@ -65,6 +79,32 @@ model Transaction {
   createdAt DateTime @default(now())
 }
 
+model TransferRequest {
+  id            String                @id @default(uuid())
+  amount        Decimal               @db.Decimal(10, 2)
+  comment       String
+  status        TransferRequestStatus @default(PENDING)
+  declineReason String?
+
+  childId       String
+  child         User                  @relation("ChildTransferRequests", fields: [childId], references: [id], onDelete: Cascade)
+
+  cardId        String
+  card          Card                  @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  resolvedById  String?
+  resolvedBy    User?                 @relation("ResolvedTransferRequests", fields: [resolvedById], references: [id])
+
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+}
+
+enum TransferRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
 enum UserRole {
   ORDINARY
   PARENT
@@ -75,15 +115,16 @@ enum UserRole {
 enum Category {
   FOOD // Столовая, кафе
   TRANSPORT // Проезд, такси
-  EDUCATION // Книги, канцелярия, курсы[cite: 6, 8]
-  ENTERTAINMENT // Игры, кино, подписки[cite: 2, 6, 8]
-  RESTRICTED_18 // Азартные игры, алкоголь, табак[cite: 7]
+  EDUCATION // Книги, канцелярия, курсы
+  ENTERTAINMENT // Игры, кино, подписки
+  RESTRICTED_18 // Азартные игры, алкоголь, табак
+  TRANSFER // Переводы между счетами / пополнение от родителей
   OTHER
 }
 
 enum TransactionStatus {
   SUCCESS
-  DECLINED_BY_BANK // Блокировка 18+, казино и т.д.[cite: 7]
-  DECLINED_BY_LIMIT // Превышен лимит[cite: 7]
+  DECLINED_BY_BANK // Блокировка 18+, казино и т.д.
+  DECLINED_BY_LIMIT // Превышен лимит
   PENDING_PARENT_APPROVAL // Ждет аппрува от родителя
 }

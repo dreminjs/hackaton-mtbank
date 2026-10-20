@@ -16,6 +16,6 @@ async function bootstrap() {
   });
   SwaggerModule.setup('api', app, documentFactory);
   //process.env.PORT
-  await app.listen(3005);
+  await app.listen(3000);
 }
 bootstrap();

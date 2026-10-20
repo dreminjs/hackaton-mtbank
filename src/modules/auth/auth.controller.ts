@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto, RefreshTokenDto } from './auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import { User } from 'generated/prisma/client';
+import { User } from '#generated/prisma/client';
 
 @Controller('auth')
 export class AuthController {
