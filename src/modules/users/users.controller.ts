@@ -32,6 +32,8 @@ import {
   DeleteFamilyMemberResponseDto,
   UpdateCardLimitsResponseDto,
   ResetSpentTodayResponseDto,
+  CardDto,
+  CardDetailsDto,
 } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -196,5 +198,38 @@ export class UsersController {
   async resetSpentToday(@Req() req: any, @Param('cardId') cardId: string) {
     const parentId = req.user.id || req.user.sub;
     return this.usersService.resetSpentToday(parentId, cardId);
+  }
+
+  @Get('cards')
+  @ApiOperation({
+    summary: 'Получить список собственных карт (для ребенка или родителя)',
+    description:
+      'Возвращает все банковские карты текущего авторизованного пользователя (включая баланс, суточный лимит, потраченное за сегодня и остаток лимита). Если карт еще нет, автоматически выпускается виртуальная карта.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Список карт текущего пользователя',
+    type: [CardDto],
+  })
+  async getMyCards(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.usersService.getMyCards(userId);
+  }
+
+  @Get('cards/:cardId')
+  @ApiOperation({
+    summary: 'Получить детальную информацию по карте (с историей транзакций)',
+    description:
+      'Возвращает подробные данные карты и список последних транзакций. Доступно владельцу карты или родителю владельца.',
+  })
+  @ApiParam({ name: 'cardId', description: 'ID карты' })
+  @ApiResponse({
+    status: 200,
+    description: 'Детальная информация по карте',
+    type: CardDetailsDto,
+  })
+  async getCardById(@Req() req: any, @Param('cardId') cardId: string) {
+    const userId = req.user.id || req.user.sub;
+    return this.usersService.getCardById(userId, cardId);
   }
 }

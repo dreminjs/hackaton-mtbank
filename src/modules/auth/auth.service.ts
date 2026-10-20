@@ -28,6 +28,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
 
     const user: User = await this.prisma.user.create({
       data: {
@@ -36,6 +37,19 @@ export class AuthService {
         name: dto.name,
         birthDay: new Date(dto.birthDay),
         role: UserRole.ORDINARY,
+        cards: {
+          create: {
+            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardholderName: dto.name.toUpperCase(),
+            expiryDate: '10/29',
+            type: 'VIRTUAL',
+            balance: 500.0,
+            dailyLimit: 200.0,
+            spentToday: 0.0,
+            allowOnlinePurchases: true,
+            allowCashWithdrawal: true,
+          },
+        },
       },
     });
 

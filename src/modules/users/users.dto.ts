@@ -67,6 +67,34 @@ export class CardDto {
 
   @ApiProperty({ example: false })
   allowCashWithdrawal: boolean;
+
+  @ApiProperty({ example: 25.0 })
+  remainingDailyLimit: number;
+}
+
+export class CardTransactionDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 12.5 })
+  amount: number;
+
+  @ApiProperty({ example: 'Школьная столовая' })
+  merchant: string;
+
+  @ApiProperty({ example: 'FOOD' })
+  category: string;
+
+  @ApiProperty({ example: 'SUCCESS' })
+  status: string;
+
+  @ApiProperty({ example: '2026-10-21T00:30:00.000Z' })
+  createdAt: Date;
+}
+
+export class CardDetailsDto extends CardDto {
+  @ApiProperty({ type: [CardTransactionDto], required: false })
+  transactions?: CardTransactionDto[];
 }
 
 export class ChildUserWithCardsDto {

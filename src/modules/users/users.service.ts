@@ -297,7 +297,7 @@ export class UsersService {
         birthDay: user.birthDay,
         role: user.role,
         parents: user.parentRelations.map((rel) => rel.parent),
-        cards: user.cards,
+        cards: user.cards.map((c) => this.formatCard(c)),
       },
       children: user.childRelations.map((rel) => ({
         id: rel.child.id,
@@ -305,7 +305,7 @@ export class UsersService {
         phoneNumber: rel.child.phoneNumber,
         birthDay: rel.child.birthDay,
         role: rel.child.role,
-        cards: rel.child.cards,
+        cards: rel.child.cards.map((c) => this.formatCard(c)),
       })),
     };
   }
@@ -568,6 +568,123 @@ export class UsersService {
         spentToday: 0,
         remainingDailyLimit: Number(updatedCard.dailyLimit),
       },
+    };
+  }
+
+  /**
+   * Вспомогательный метод для форматирования данных карты
+   */
+  private formatCard(card: any) {
+    const dailyLimit = Number(card.dailyLimit);
+    const spentToday = Number(card.spentToday);
+    return {
+      id: card.id,
+      cardNumberMask: card.cardNumberMask,
+      cardholderName: card.cardholderName,
+      expiryDate: card.expiryDate,
+      type: card.type,
+      balance: Number(card.balance),
+      isBlocked: card.isBlocked,
+      dailyLimit,
+      spentToday,
+      remainingDailyLimit: Math.max(0, dailyLimit - spentToday),
+      allowOnlinePurchases: card.allowOnlinePurchases,
+      allowCashWithdrawal: card.allowCashWithdrawal,
+    };
+  }
+
+  /**
+   * Получить список собственных карт текущего авторизованного пользователя (ребенка или родителя)
+   */
+  async getMyCards(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        cards: {
+          orderBy: { id: 'asc' },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    // Если у пользователя пока нет карт - автоматически выпускаем виртуальную карту
+    if (user.cards.length === 0) {
+      const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+      const defaultBalance =
+        user.role === UserRole.ORDINARY || user.role === UserRole.PARENT
+          ? 500.0
+          : 50.0;
+      const newCard = await this.prisma.card.create({
+        data: {
+          userId: user.id,
+          cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+          cardholderName: user.name.toUpperCase(),
+          expiryDate: '10/29',
+          type: 'VIRTUAL',
+          balance: defaultBalance,
+          dailyLimit: 100.0,
+          spentToday: 0.0,
+          allowOnlinePurchases: true,
+          allowCashWithdrawal: true,
+        },
+      });
+      user.cards = [newCard];
+    }
+
+    return user.cards.map((c) => this.formatCard(c));
+  }
+
+  /**
+   * Получить детальную информацию по конкретной карте (включая последние транзакции)
+   */
+  async getCardById(userId: string, cardId: string) {
+    const card = await this.prisma.card.findUnique({
+      where: { id: cardId },
+      include: {
+        transactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+        user: {
+          select: { id: true, name: true, role: true },
+        },
+      },
+    });
+
+    if (!card) {
+      throw new NotFoundException('Карта не найдена');
+    }
+
+    // Проверяем права: карта принадлежит пользователю ЛИБО пользователь - родитель владельца карты
+    if (card.userId !== userId) {
+      const isParent = await this.prisma.familyRelation.findUnique({
+        where: {
+          parentId_childId: {
+            parentId: userId,
+            childId: card.userId,
+          },
+        },
+      });
+
+      if (!isParent) {
+        throw new ForbiddenException('У вас нет доступа к просмотру этой карты');
+      }
+    }
+
+    const formatted = this.formatCard(card);
+    return {
+      ...formatted,
+      transactions: card.transactions.map((t) => ({
+        id: t.id,
+        amount: Number(t.amount),
+        merchant: t.merchant,
+        category: t.category,
+        status: t.status,
+        createdAt: t.createdAt,
+      })),
     };
   }
 }
