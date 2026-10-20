@@ -9,6 +9,7 @@ import { PassportModule } from '../passport/passport.module';
 import { PaymentsModule } from '../payments/payments.module';
 
 import { UsersModule } from '../users/users.module';
+import { TasksModule } from '../tasks/tasks.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from '../users/users.module';
     PassportModule,
     PaymentsModule,
     UsersModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [

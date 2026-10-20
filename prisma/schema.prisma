@@ -25,6 +25,9 @@ model User {
   parentRelations          FamilyRelation[]  @relation("ChildRelations")
   childTransferRequests    TransferRequest[] @relation("ChildTransferRequests")
   resolvedTransferRequests TransferRequest[] @relation("ResolvedTransferRequests")
+  createdTasks             Task[]            @relation("CreatedTasks")
+  assignedTasks            Task[]            @relation("AssignedTasks")
+  completedTasks           Task[]            @relation("CompletedTasks")
 
   createdAt                DateTime          @default(now())
   updatedAt                DateTime          @updatedAt
@@ -62,6 +65,8 @@ model Card {
   user             User              @relation(fields: [userId], references: [id])
   transactions     Transaction[]
   transferRequests TransferRequest[]
+  taskCreatorCards Task[]            @relation("TaskCreatorCard")
+  taskTargetCards  Task[]            @relation("TaskTargetCard")
 }
 
 model Transaction {
@@ -103,6 +108,45 @@ enum TransferRequestStatus {
   PENDING
   APPROVED
   DECLINED
+}
+
+model Task {
+  id                String       @id @default(uuid())
+  title             String
+  description       String?
+  rewardAmount      Decimal      @db.Decimal(10, 2)
+  deadline          DateTime?
+  status            TaskStatus   @default(OPEN)
+
+  creatorId         String
+  creator           User         @relation("CreatedTasks", fields: [creatorId], references: [id], onDelete: Cascade)
+
+  creatorCardId     String?
+  creatorCard       Card?        @relation("TaskCreatorCard", fields: [creatorCardId], references: [id], onDelete: SetNull)
+
+  assignedChildId   String?
+  assignedChild     User?        @relation("AssignedTasks", fields: [assignedChildId], references: [id], onDelete: SetNull)
+
+  completedById     String?
+  completedBy       User?        @relation("CompletedTasks", fields: [completedById], references: [id], onDelete: SetNull)
+
+  targetCardId      String?
+  targetCard        Card?        @relation("TaskTargetCard", fields: [targetCardId], references: [id], onDelete: SetNull)
+
+  submissionComment String?
+  submittedAt       DateTime?
+  rejectionReason   String?
+
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETED
+  CANCELLED
 }
 
 enum UserRole {
