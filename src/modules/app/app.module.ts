@@ -5,9 +5,17 @@ import { APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { PassportModule } from '../passport/passport.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, PrismaModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    PrismaModule,
+    PassportModule,
+    PaymentsModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

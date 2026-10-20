@@ -11,7 +11,11 @@ async function bootstrap() {
     .addTag('cats')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
+  app.getHttpAdapter().get('/api/swagger.json', (req, res) => {
+    res.json(documentFactory());
+  });
   SwaggerModule.setup('api', app, documentFactory);
-  await app.listen(process.env.PORT ?? 3000);
+  //process.env.PORT
+  await app.listen(3005);
 }
 bootstrap();
