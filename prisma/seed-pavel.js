@@ -63,6 +63,7 @@ async function main() {
     ? existingCard
     : await prisma.card.create({
         data: {
+          cardNumber: '4258100215481548',
           cardNumberMask: '4258 •••• •••• 1548',
           cardholderName: 'ПЕТРОВ ПАВЕЛ ОЛЕГОВИЧ',
           expiryDate: '10/29',

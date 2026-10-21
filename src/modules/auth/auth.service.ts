@@ -9,6 +9,7 @@ import { LoginInput, RegisterInput } from './auth.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { User, UserRole } from '#generated/prisma/client';
 import * as bcrypt from 'bcrypt';
+import { generateCardNumber, toCardNumberMask } from '../../common/card-number.helper';
 
 @Injectable()
 export class AuthService {
@@ -28,7 +29,7 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+    const cardNumber = generateCardNumber();
 
     const user: User = await this.prisma.user.create({
       data: {
@@ -39,7 +40,8 @@ export class AuthService {
         role: UserRole.ORDINARY,
         cards: {
           create: {
-            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardNumber,
+            cardNumberMask: toCardNumberMask(cardNumber),
             cardholderName: dto.name.toUpperCase(),
             expiryDate: '10/29',
             type: 'VIRTUAL',

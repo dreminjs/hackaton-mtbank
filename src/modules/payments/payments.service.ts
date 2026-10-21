@@ -15,6 +15,7 @@ import type {
 } from './payments.dto';
 import { resolveMcc } from './payments.constants';
 import { isAdult } from '../../common/isAdult.helper';
+import { generateCardNumber, toCardNumberMask } from '../../common/card-number.helper';
 import {
   NotificationType,
   TransactionStatus,
@@ -716,11 +717,12 @@ export class PaymentsService {
         childCard = child.cards[0];
       } else {
         // Автоматически выпускаем виртуальную карту ребенку, если у него еще нет карт
-        const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+        const cardNumber = generateCardNumber();
         childCard = await this.prisma.card.create({
           data: {
             userId: child.id,
-            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardNumber,
+            cardNumberMask: toCardNumberMask(cardNumber),
             cardholderName: child.name.toUpperCase(),
             expiryDate: '10/29',
             type: 'VIRTUAL',
@@ -953,11 +955,12 @@ export class PaymentsService {
       if (recipient.cards.length > 0) {
         recipientCard = recipient.cards[0];
       } else {
-        const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+        const cardNumber = generateCardNumber();
         recipientCard = await this.prisma.card.create({
           data: {
             userId: recipient.id,
-            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardNumber,
+            cardNumberMask: toCardNumberMask(cardNumber),
             cardholderName: recipient.name.toUpperCase(),
             expiryDate: '10/29',
             type: 'VIRTUAL',

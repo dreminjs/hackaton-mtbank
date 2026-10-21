@@ -12,6 +12,7 @@ import {
   WithdrawPiggyBankDto,
 } from './piggy-banks.dto';
 import { isAdult } from '../../common/isAdult.helper';
+import { generateCardNumber, toCardNumberMask } from '../../common/card-number.helper';
 import { PiggyBankStatus, UserRole } from '#generated/prisma';
 
 @Injectable()
@@ -92,7 +93,7 @@ export class PiggyBanksService {
       throw new NotFoundException('Пользователь не найден');
     }
 
-    const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+    const cardNumber = generateCardNumber();
     const defaultBalance =
       user.role === UserRole.CHILD_7_13 || user.role === UserRole.TEEN_14_17
         ? 50.0
@@ -101,7 +102,8 @@ export class PiggyBanksService {
     return this.prisma.card.create({
       data: {
         userId: user.id,
-        cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+        cardNumber,
+        cardNumberMask: toCardNumberMask(cardNumber),
         cardholderName: user.name.toUpperCase(),
         expiryDate: '10/29',
         type: 'VIRTUAL',

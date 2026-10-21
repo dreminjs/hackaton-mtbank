@@ -56,6 +56,7 @@ model FamilyRelation {
 }
 model Card {
   id                    String  @id @default(uuid())
+  cardNumber            String  @unique // например: "4258123456781234"
   cardNumberMask        String // например: "4258 •••• •••• 1234"
   cardholderName        String // "ANDREW DREMIN"
   expiryDate            String // "10/28"

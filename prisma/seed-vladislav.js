@@ -68,6 +68,7 @@ async function main() {
   });
 
   const cardData = {
+    cardNumber: '4258100258245824',
     cardNumberMask: '4258 •••• •••• 5824',
     cardholderName: 'ПЕТРОВ ВЛАДИСЛАВ ОЛЕГОВИЧ',
     expiryDate: '10/29',

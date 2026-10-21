@@ -9,6 +9,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddChildDto, LinkChildDto, UpdateCardLimitsDto } from './users.dto';
 import { resolveChildRole } from '../../common/isAdult.helper';
+import { generateCardNumber, toCardNumberMask } from '../../common/card-number.helper';
 
 import { PassportService } from '../passport/passport.service';
 import {
@@ -95,8 +96,7 @@ export class UsersService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    // Генерируем 4 последние цифры карты
-    const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+    const cardNumber = generateCardNumber();
 
     // Создаем ребенка, отношение с родителем, обновляем роль родителя на PARENT и создаем карту в транзакции
     const [child, updatedParent] = await this.prisma.$transaction(async (tx) => {
@@ -110,7 +110,8 @@ export class UsersService {
           role: childRole,
           cards: {
             create: {
-              cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+              cardNumber,
+              cardNumberMask: toCardNumberMask(cardNumber),
               cardholderName: dto.name.toUpperCase(),
               expiryDate: '10/29',
               type: 'VIRTUAL',
@@ -312,7 +313,7 @@ export class UsersService {
         birthDay: rel.child.birthDay,
         role: rel.child.role,
         mobiksBalance: rel.child.mobiksBalance,
-        cards: rel.child.cards.map((c) => this.formatCard(c)),
+        cards: rel.child.cards.map((c) => this.formatCard(c, false)),
       })),
     };
   }
@@ -589,11 +590,12 @@ export class UsersService {
   /**
    * Вспомогательный метод для форматирования данных карты
    */
-  private formatCard(card: any) {
+  private formatCard(card: any, includeCardNumber = true) {
     const dailyLimit = Number(card.dailyLimit);
     const spentToday = Number(card.spentToday);
     return {
       id: card.id,
+      ...(includeCardNumber ? { cardNumber: card.cardNumber } : {}),
       cardNumberMask: card.cardNumberMask,
       cardholderName: card.cardholderName,
       expiryDate: card.expiryDate,
@@ -629,7 +631,7 @@ export class UsersService {
 
     // Если у пользователя пока нет карт - автоматически выпускаем виртуальную карту
     if (user.cards.length === 0) {
-      const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+      const cardNumber = generateCardNumber();
       const defaultBalance =
         user.role === UserRole.ORDINARY || user.role === UserRole.PARENT
           ? 500.0
@@ -637,7 +639,8 @@ export class UsersService {
       const newCard = await this.prisma.card.create({
         data: {
           userId: user.id,
-          cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+          cardNumber,
+          cardNumberMask: toCardNumberMask(cardNumber),
           cardholderName: user.name.toUpperCase(),
           expiryDate: '10/29',
           type: 'VIRTUAL',
@@ -691,7 +694,7 @@ export class UsersService {
       }
     }
 
-    const formatted = this.formatCard(card);
+    const formatted = this.formatCard(card, card.userId === userId);
     return {
       ...formatted,
       transactions: card.transactions.map((t) => ({

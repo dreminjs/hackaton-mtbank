@@ -50,6 +50,13 @@ export class CardDto {
   @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
   id: string;
 
+  @ApiProperty({
+    example: '4258123456781234',
+    required: false,
+    description: 'Полный номер карты; возвращается только владельцу карты',
+  })
+  cardNumber?: string;
+
   @ApiProperty({ example: '4258 •••• •••• 1234' })
   cardNumberMask: string;
 

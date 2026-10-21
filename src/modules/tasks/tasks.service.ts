@@ -14,6 +14,7 @@ import {
 } from './tasks.dto';
 import { NotificationType, TaskStatus, UserRole } from '#generated/prisma';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { generateCardNumber, toCardNumberMask } from '../../common/card-number.helper';
 
 @Injectable()
 export class TasksService {
@@ -107,7 +108,7 @@ export class TasksService {
       throw new NotFoundException('Пользователь не найден');
     }
 
-    const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+    const cardNumber = generateCardNumber();
     const defaultBalance =
       user.role === UserRole.CHILD_7_13 || user.role === UserRole.TEEN_14_17
         ? 50.0
@@ -116,7 +117,8 @@ export class TasksService {
     return this.prisma.card.create({
       data: {
         userId: user.id,
-        cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+        cardNumber,
+        cardNumberMask: toCardNumberMask(cardNumber),
         cardholderName: user.name.toUpperCase(),
         expiryDate: '10/29',
         type: 'VIRTUAL',
