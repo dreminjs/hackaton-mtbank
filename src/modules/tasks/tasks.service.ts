@@ -10,12 +10,17 @@ import {
   RejectTaskDto,
   SubmitTaskDto,
   UpdateTaskDto,
+  RequestNewTaskDto,
 } from './tasks.dto';
-import { TaskStatus, UserRole } from '#generated/prisma';
+import { NotificationType, TaskStatus, UserRole } from '#generated/prisma';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsGateway: NotificationsGateway,
+  ) {}
 
   /**
    * Преобразование сущности Task в удобный формат с числами вместо Decimal
@@ -65,6 +70,7 @@ export class TasksService {
           }
         : null,
       submissionComment: task.submissionComment,
+      photoUrl: task.photoUrl,
       submittedAt: task.submittedAt,
       rejectionReason: task.rejectionReason,
       createdAt: task.createdAt,
@@ -499,6 +505,7 @@ export class TasksService {
         completedById: childId,
         targetCardId: targetCard.id,
         submissionComment: dto.comment || null,
+        photoUrl: dto.photoUrl || null,
         submittedAt: new Date(),
         rejectionReason: null,
       },
@@ -746,4 +753,89 @@ export class TasksService {
       task: this.formatTask(cancelledTask),
     };
   }
+
+  /**
+   * Ребенок просит новое задание у родителей («Попросить новое задание у родителей»)
+   */
+  async requestNewTask(childId: string, dto: RequestNewTaskDto) {
+    const child = await this.prisma.user.findUnique({
+      where: { id: childId },
+      include: {
+        parentRelations: {
+          include: {
+            parent: {
+              select: { id: true, name: true, phoneNumber: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!child) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    if (
+      child.role !== UserRole.CHILD_7_13 &&
+      child.role !== UserRole.TEEN_14_17
+    ) {
+      throw new BadRequestException('Запрашивать задания у родителей могут только дети');
+    }
+
+    if (child.parentRelations.length === 0) {
+      throw new BadRequestException('У вас нет привязанных родителей для запроса заданий');
+    }
+
+    const commentText = dto.comment?.trim() || '';
+
+    // Отправляем уведомление каждому родителю
+    for (const rel of child.parentRelations) {
+      const parentId = rel.parentId;
+
+      // 1. Сохраняем уведомление в БД
+      try {
+        await this.prisma.notification.create({
+          data: {
+            type: NotificationType.TASK_REQUESTED,
+            title: '🎯 Новое задание для ребенка',
+            message: `Ребенок ${child.name} просит дать ему новое задание!${commentText ? ` («${commentText}»)` : ''}`,
+            data: {
+              childId: child.id,
+              childName: child.name,
+              comment: commentText,
+            },
+            userId: parentId,
+            childId: child.id,
+          },
+        });
+      } catch (e) {
+        // Игнорируем ошибку базы данных
+      }
+
+      // 2. Отправляем через Socket.IO
+      try {
+        const socketPayload = {
+          type: 'TASK_REQUESTED',
+          title: '🎯 Ребенок просит задание!',
+          message: `${child.name} просит дать новое задание с вознаграждением${commentText ? `: «${commentText}»` : ''}`,
+          childId: child.id,
+          childName: child.name,
+          comment: commentText,
+          createdAt: new Date().toISOString(),
+        };
+
+        this.notificationsGateway.sendToUser(parentId, 'task_requested', socketPayload);
+        this.notificationsGateway.sendToUser(parentId, 'notification', socketPayload);
+      } catch (e) {
+        // Игнорируем ошибку сокетов
+      }
+    }
+
+    return {
+      message: 'Запрос на новое задание успешно отправлен родителям!',
+      comment: dto.comment,
+      notifiedParentsCount: child.parentRelations.length,
+    };
+  }
 }
+

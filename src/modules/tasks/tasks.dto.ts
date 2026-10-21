@@ -73,6 +73,10 @@ export const SubmitTaskSchema = z.object({
     .string()
     .optional()
     .describe('Комментарий ребенка о проделанной работе ("Я пропылесосил и вытер пыль")'),
+  photoUrl: z
+    .string()
+    .optional()
+    .describe('Ссылка или base64 фото-отчета о выполненной задаче ("Сделано! Отправить фото")'),
   targetCardId: z
     .string()
     .uuid('Некорректный ID карты')
@@ -81,6 +85,17 @@ export const SubmitTaskSchema = z.object({
 });
 
 export class SubmitTaskDto extends createZodDto(SubmitTaskSchema) {}
+
+// Запрос нового задания у родителей
+export const RequestNewTaskSchema = z.object({
+  comment: z
+    .string()
+    .max(500, 'Комментарий не должен превышать 500 символов')
+    .optional()
+    .describe('Пожелание или комментарий ребенка ("Хочу накопить на велосипед, дайте задание!")'),
+});
+
+export class RequestNewTaskDto extends createZodDto(RequestNewTaskSchema) {}
 
 // 4. Отклонение родителем выполнения
 export const RejectTaskSchema = z.object({
@@ -156,6 +171,9 @@ export class TaskResponseDto {
   @ApiProperty({ example: 'Я всё сделал!', required: false, nullable: true })
   submissionComment?: string | null;
 
+  @ApiProperty({ example: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952', required: false, nullable: true })
+  photoUrl?: string | null;
+
   @ApiProperty({ example: '2026-10-21T14:30:00.000Z', required: false, nullable: true })
   submittedAt?: Date | null;
 
@@ -186,6 +204,17 @@ export class SubmitTaskResponseDto {
 
   @ApiProperty({ type: TaskResponseDto })
   task: TaskResponseDto;
+}
+
+export class RequestNewTaskResponseDto {
+  @ApiProperty({ example: 'Запрос на новое задание успешно отправлен родителям!' })
+  message: string;
+
+  @ApiProperty({ example: 'Хочу накопить на велосипед, дайте задание!', required: false })
+  comment?: string;
+
+  @ApiProperty({ example: 2, description: 'Количество уведомленных родителей' })
+  notifiedParentsCount: number;
 }
 
 export class ApproveTaskResponseDto {

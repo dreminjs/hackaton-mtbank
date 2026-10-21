@@ -74,10 +74,11 @@ export class AuthController {
   @ApiOperation({ summary: 'Получить профиль текущего авторизованного пользователя' })
   @ApiResponse({
     status: 200,
-    description: 'Данные профиля из токена',
+    description: 'Данные профиля из базы данных с балансом Мобиков',
     type: UserProfileDto,
   })
-  getProfile(@Req() req: any): Promise<any> {
-    return req.user;
+  getProfile(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.authService.getMe(userId);
   }
 }

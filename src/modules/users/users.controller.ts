@@ -34,6 +34,8 @@ import {
   ResetSpentTodayResponseDto,
   CardDto,
   CardDetailsDto,
+  GraduationStatusResponseDto,
+  GraduateResponseDto,
 } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PaymentsService } from '../payments/payments.service';
@@ -263,5 +265,38 @@ export class UsersController {
   async getCardById(@Req() req: any, @Param('cardId') cardId: string) {
     const userId = req.user.id || req.user.sub;
     return this.usersService.getCardById(userId, cardId);
+  }
+
+  @Get('me/graduation-status')
+  @ApiOperation({
+    summary: 'Получить статус прохождения квеста совершеннолетия («Квест 17.5: Путь к 18 🚀»)',
+    description:
+      'Возвращает финансовый паспорт подростка: количество закрытых копилок, выполненных заданий от родителей, баланс Мобиков, прогресс готовности к самостоятельному банкингу и список достижений.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Статус готовности к самостоятельному взрослому банкингу',
+    type: GraduationStatusResponseDto,
+  })
+  async getGraduationStatus(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.usersService.getGraduationStatus(userId);
+  }
+
+  @Post('me/graduate')
+  @ApiOperation({
+    summary: 'Стать независимым пользователем банка (Переход 17 -> 18)',
+    description:
+      'Сценарий перехода во взрослый банкинг: отвязывает всех родителей, переводит роль пользователя в ORDINARY, снимает детские лимиты и ограничения по картам, сохраняя все счета, копилки, Мобики и историю операций.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Успешный переход в статус независимого взрослого клиента',
+    type: GraduateResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Пользователь уже является совершеннолетним клиентом' })
+  async graduate(@Req() req: any) {
+    const userId = req.user.id || req.user.sub;
+    return this.usersService.graduate(userId);
   }
 }

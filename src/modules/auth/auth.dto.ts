@@ -62,12 +62,24 @@ export class LogoutResponseDto {
 
 export class UserProfileDto {
   @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
-  sub: string;
+  id: string;
 
   @ApiProperty({ example: '+375291234567' })
   phoneNumber: string;
 
-  @ApiProperty({ example: 'PARENT' })
-  role?: string;
+  @ApiProperty({ example: 'Иван' })
+  name: string;
+
+  @ApiProperty({ example: '2010-05-15T00:00:00.000Z' })
+  birthDay: Date;
+
+  @ApiProperty({ example: 'TEEN_14_17' })
+  role: string;
+
+  @ApiProperty({ example: 120, description: 'Бонусный баланс Мобиков' })
+  mobiksBalance: number;
+
+  @ApiProperty({ example: ['FOOD', 'EDUCATION'], description: 'Выбранные категории повышенного кэшбэка' })
+  selectedCashbackCategories: string[];
 }
 

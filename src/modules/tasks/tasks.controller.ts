@@ -30,6 +30,8 @@ import {
   SubmitTaskResponseDto,
   TaskResponseDto,
   UpdateTaskDto,
+  RequestNewTaskDto,
+  RequestNewTaskResponseDto,
 } from './tasks.dto';
 import { TaskStatus } from '#generated/prisma';
 
@@ -113,6 +115,26 @@ export class TasksController {
   ) {
     const parentId = req.user.id || req.user.sub;
     return this.tasksService.updateTask(parentId, id, dto);
+  }
+
+  @Post('request-new')
+  @ApiOperation({
+    summary: 'Попросить новое задание у родителей (для ребенка)',
+    description:
+      'Ребенок отправляет родителям запрос на новое задание с опциональным комментарием (например: "Хочу накопить на ноутбук, дайте задание!"). Родители получают Push-уведомление через WebSockets.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Запрос на задание успешно отправлен родителям',
+    type: RequestNewTaskResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Доступно только детям с привязанными родителями' })
+  async requestNewTask(
+    @Req() req: any,
+    @Body() dto: RequestNewTaskDto,
+  ) {
+    const childId = req.user.id || req.user.sub;
+    return this.tasksService.requestNewTask(childId, dto);
   }
 
   @Post(':id/submit')

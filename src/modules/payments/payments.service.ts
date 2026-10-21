@@ -11,6 +11,7 @@ import type {
   ApproveTransferRequestDto,
   DeclineTransferRequestDto,
   ParentToChildTransferDto,
+  P2pTransferByPhoneDto,
 } from './payments.dto';
 import { resolveMcc } from './payments.constants';
 import { isAdult } from '../../common/isAdult.helper';
@@ -206,6 +207,16 @@ export class PaymentsService {
     }
 
     // 5. УСПЕШНОЕ СПИСАНИЕ (Атомарная транзакция в БД)
+    // Расчет начисления бонусов «Мобики»: 1 BYN = 1 Мобик (минимум 1 Мобик), x2 при совпадении с выбранной категорией
+    const baseMobiks = Math.max(1, Math.floor(totalAmount));
+    const selectedCashbacks = new Set(user.selectedCashbackCategories || []);
+    const hasCashbackMultiplier = items.some((item) => {
+      const mccInfo = resolveMcc(item.mcc);
+      return selectedCashbacks.has(mccInfo.category);
+    });
+    const multiplier = hasCashbackMultiplier ? 2 : 1;
+    const earnedMobiks = baseMobiks * multiplier;
+
     const txOperations = [
       this.prisma.card.update({
         where: { id: card.id },
@@ -231,17 +242,29 @@ export class PaymentsService {
           },
         });
       }),
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          mobiksBalance: { increment: earnedMobiks },
+        },
+        select: { mobiksBalance: true },
+      }),
     ];
 
-    const [updatedCard, ...createdTransactions] = await this.prisma.$transaction(txOperations as any);
+    const results = await this.prisma.$transaction(txOperations as any);
+    const updatedCard = results[0];
+    const updatedUser = results[results.length - 1];
+    const createdTransactions = results.slice(1, results.length - 1);
 
     return {
       status: TransactionStatus.SUCCESS,
-      message: 'Оплата прошла успешно!',
+      message: `Оплата прошла успешно! Начислено ${earnedMobiks} Мобиков ⚡${hasCashbackMultiplier ? ' (повышенный кэшбэк x2)' : ''}`,
       totalAmount,
       newBalance: Number(updatedCard.balance),
       spentToday: Number(updatedCard.spentToday),
       dailyLimit: Number(updatedCard.dailyLimit),
+      earnedMobiks,
+      mobiksBalance: updatedUser.mobiksBalance,
       transactions: createdTransactions,
     };
   }
@@ -840,6 +863,218 @@ export class PaymentsService {
         childTransactionId: childTx.id,
       },
       transferRequestId: transferRequest.id,
+    };
+  }
+
+  /**
+   * 6. P2P перевод по номеру телефона (для подростков и взрослых)
+   */
+  async transferByPhone(senderId: string, dto: P2pTransferByPhoneDto) {
+    const sender = await this.prisma.user.findUnique({
+      where: { id: senderId },
+      include: { cards: true },
+    });
+
+    if (!sender) {
+      throw new NotFoundException('Отправитель не найден');
+    }
+
+    const cleanSenderPhone = sender.phoneNumber.replace(/[\s\-\(\)]/g, '');
+    const cleanRecipientPhone = dto.recipientPhone.replace(/[\s\-\(\)]/g, '');
+
+    if (cleanSenderPhone === cleanRecipientPhone) {
+      throw new BadRequestException('Нельзя переводить деньги самому себе');
+    }
+
+    // Ищем получателя по номеру
+    const recipient = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { phoneNumber: dto.recipientPhone },
+          { phoneNumber: cleanRecipientPhone },
+          {
+            phoneNumber: cleanRecipientPhone.startsWith('+')
+              ? cleanRecipientPhone
+              : `+${cleanRecipientPhone}`,
+          },
+        ],
+      },
+      include: { cards: true },
+    });
+
+    if (!recipient) {
+      throw new NotFoundException(
+        `Получатель с номером телефона "${dto.recipientPhone}" не найден в системе МТБанк`,
+      );
+    }
+
+    // Выбираем карту отправителя для списания
+    let senderCard = dto.cardId
+      ? sender.cards.find((c) => c.id === dto.cardId)
+      : sender.cards.find((c) => Number(c.balance) >= dto.amount && !c.isBlocked);
+
+    if (!senderCard && !dto.cardId) {
+      senderCard = sender.cards.find((c) => !c.isBlocked);
+    }
+
+    if (!senderCard) {
+      throw new BadRequestException('У вас нет доступных карт для перевода');
+    }
+
+    if (senderCard.isBlocked) {
+      throw new BadRequestException('Выбранная карта отправителя заблокирована');
+    }
+
+    if (Number(senderCard.balance) < dto.amount) {
+      throw new BadRequestException(
+        `Недостаточно средств на карте (баланс: ${Number(senderCard.balance)} BYN, требуется: ${dto.amount} BYN)`,
+      );
+    }
+
+    // Проверяем дневной лимит, если отправитель — ребенок/подросток
+    const isMinor =
+      sender.role === UserRole.CHILD_7_13 ||
+      sender.role === UserRole.TEEN_14_17 ||
+      !isAdult(sender.birthDay);
+
+    if (isMinor) {
+      const spentToday = Number(senderCard.spentToday);
+      const dailyLimit = Number(senderCard.dailyLimit);
+      if (spentToday + dto.amount > dailyLimit) {
+        throw new ForbiddenException(
+          `Перевод превышает установленный дневной лимит (${dailyLimit} BYN). Доступно сегодня: ${(dailyLimit - spentToday).toFixed(2)} BYN`,
+        );
+      }
+    }
+
+    // Выбираем карту получателя для зачисления
+    let recipientCard = recipient.cards.find((c) => !c.isBlocked);
+    if (!recipientCard) {
+      if (recipient.cards.length > 0) {
+        recipientCard = recipient.cards[0];
+      } else {
+        const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+        recipientCard = await this.prisma.card.create({
+          data: {
+            userId: recipient.id,
+            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardholderName: recipient.name.toUpperCase(),
+            expiryDate: '10/29',
+            type: 'VIRTUAL',
+            balance: 0.0,
+            dailyLimit: 100.0,
+            spentToday: 0.0,
+            allowOnlinePurchases: true,
+            allowCashWithdrawal: true,
+          },
+        });
+      }
+    }
+
+    const commentText = dto.comment?.trim() || '';
+
+    // Атомарный перевод
+    const [updatedSenderCard, updatedRecipientCard, senderTx, recipientTx] =
+      await this.prisma.$transaction([
+        this.prisma.card.update({
+          where: { id: senderCard.id },
+          data: {
+            balance: { decrement: dto.amount },
+            ...(isMinor && { spentToday: { increment: dto.amount } }),
+          },
+        }),
+        this.prisma.card.update({
+          where: { id: recipientCard.id },
+          data: {
+            balance: { increment: dto.amount },
+          },
+        }),
+        this.prisma.transaction.create({
+          data: {
+            amount: dto.amount,
+            merchant: `Перевод на ${recipient.phoneNumber} (${recipient.name})${commentText ? `: ${commentText}` : ''}`,
+            category: 'TRANSFER',
+            status: TransactionStatus.SUCCESS,
+            userId: sender.id,
+            cardId: senderCard.id,
+          },
+        }),
+        this.prisma.transaction.create({
+          data: {
+            amount: dto.amount,
+            merchant: `Перевод от ${sender.phoneNumber} (${sender.name})${commentText ? `: ${commentText}` : ''}`,
+            category: 'TRANSFER',
+            status: TransactionStatus.SUCCESS,
+            userId: recipient.id,
+            cardId: recipientCard.id,
+          },
+        }),
+      ]);
+
+    // WebSocket Push получателю
+    try {
+      const socketPayload = {
+        type: 'P2P_TRANSFER',
+        title: '💸 Входящий перевод!',
+        message: `${sender.name} перевел вам ${dto.amount.toFixed(2)} BYN${commentText ? ` («${commentText}»)` : ''}`,
+        amount: dto.amount,
+        comment: commentText,
+        senderName: sender.name,
+        senderPhone: sender.phoneNumber,
+        recipientCardBalance: Number(updatedRecipientCard.balance),
+        cardMask: recipientCard.cardNumberMask,
+        transactionId: recipientTx.id,
+      };
+
+      this.notificationsGateway.sendToUser(
+        recipient.id,
+        'p2p_transfer',
+        socketPayload,
+      );
+      this.notificationsGateway.sendToUser(
+        recipient.id,
+        'notification',
+        socketPayload,
+      );
+    } catch (e) {
+      // Игнорируем сетевые ошибки сокетов
+    }
+
+    // Сохраняем уведомление в БД
+    try {
+      await this.prisma.notification.create({
+        data: {
+          type: NotificationType.TRANSFER_REQUEST,
+          title: '💸 Входящий перевод по номеру телефона',
+          message: `${sender.name} перевел вам ${dto.amount.toFixed(2)} BYN${commentText ? ` («${commentText}»)` : ''}`,
+          data: {
+            amount: dto.amount,
+            comment: commentText,
+            senderId: sender.id,
+            senderName: sender.name,
+            senderPhone: sender.phoneNumber,
+            cardMask: recipientCard.cardNumberMask,
+            transactionId: recipientTx.id,
+          },
+          userId: recipient.id,
+        },
+      });
+    } catch (e) {
+      // Игнорируем
+    }
+
+    return {
+      message: `Перевод на сумму ${dto.amount.toFixed(2)} BYN для ${recipient.name} (${recipient.phoneNumber}) успешно отправлен!`,
+      amount: dto.amount,
+      comment: dto.comment,
+      recipient: {
+        id: recipient.id,
+        name: recipient.name,
+        phoneNumber: recipient.phoneNumber,
+      },
+      senderNewBalance: Number(updatedSenderCard.balance),
+      senderCardMask: senderCard.cardNumberMask,
+      transactionId: senderTx.id,
     };
   }
 

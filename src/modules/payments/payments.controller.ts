@@ -32,6 +32,8 @@ import {
   TransferRequestListItemDto,
   ParentToChildTransferDto,
   ParentToChildTransferResponseDto,
+  P2pTransferByPhoneDto,
+  P2pTransferResponseDto,
 } from './payments.dto';
 
 @ApiTags('payments')
@@ -151,6 +153,27 @@ export class PaymentsController {
   ) {
     const parentId = req.user.id || req.user.sub;
     return this.paymentsService.transferToChild(parentId, dto);
+  }
+
+  @Post('transfer/by-phone')
+  @ApiOperation({
+    summary: 'P2P-перевод денег по номеру телефона (для подростков и взрослых)',
+    description:
+      'Быстрый перевод денег другу или родственнику по номеру телефона (+375...). Списание с карты отправителя, зачисление на карту получателя, создание транзакций и отправка пуш-уведомления через WebSockets.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Перевод успешно выполнен',
+    type: P2pTransferResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Недостаточно средств или перевод самому себе' })
+  @ApiResponse({ status: 404, description: 'Получатель с таким номером телефона не найден' })
+  async transferByPhone(
+    @Req() req: any,
+    @Body() dto: P2pTransferByPhoneDto,
+  ) {
+    const senderId = req.user.id || req.user.sub;
+    return this.paymentsService.transferByPhone(senderId, dto);
   }
 
   @Get('transactions')

@@ -102,6 +102,31 @@ export const ChildDirectTransferSchema = z.object({
 export class ChildDirectTransferDto extends createZodDto(ChildDirectTransferSchema) { }
 export type TChildDirectTransferDto = z.infer<typeof ChildDirectTransferSchema>;
 
+// P2P перевод по номеру телефона
+export const P2pTransferByPhoneSchema = z.object({
+  recipientPhone: z
+    .string()
+    .min(5, 'Укажите номер телефона получателя')
+    .describe('Номер телефона получателя перевода (+375XXXXXXXXX)'),
+  amount: z
+    .number()
+    .positive('Сумма перевода должна быть больше 0')
+    .min(0.01, 'Минимальная сумма перевода — 0.01 BYN')
+    .describe('Сумма перевода в BYN'),
+  comment: z
+    .string()
+    .max(500, 'Комментарий не должен превышать 500 символов')
+    .optional()
+    .describe('Комментарий к переводу (за обед, в подарок и т.д.)'),
+  cardId: z
+    .string()
+    .optional()
+    .describe('ID карты отправителя для списания (если не указана, выберется автоматически)'),
+});
+
+export class P2pTransferByPhoneDto extends createZodDto(P2pTransferByPhoneSchema) { }
+export type TP2pTransferByPhoneDto = z.infer<typeof P2pTransferByPhoneSchema>;
+
 // --- Swagger Response Models ---
 
 export class TransactionItemDto {
@@ -142,6 +167,12 @@ export class PayQrResponseDto {
 
   @ApiProperty({ example: 25.0 })
   dailyLimit: number;
+
+  @ApiProperty({ example: 25, description: 'Начислено бонусов Мобиков за покупку (с учетом кэшбэка x2)' })
+  earnedMobiks: number;
+
+  @ApiProperty({ example: 145, description: 'Текущий баланс Мобиков пользователя' })
+  mobiksBalance: number;
 
   @ApiProperty({ type: [TransactionItemDto] })
   transactions: TransactionItemDto[];
@@ -399,4 +430,39 @@ export class ParentToChildTransferResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-5678-90ab-cdef-1234567890ab', required: false })
   transferRequestId?: string;
 }
+
+export class P2pRecipientShortDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  id: string;
+
+  @ApiProperty({ example: 'Иван' })
+  name: string;
+
+  @ApiProperty({ example: '+375291234567' })
+  phoneNumber: string;
+}
+
+export class P2pTransferResponseDto {
+  @ApiProperty({ example: 'Перевод на сумму 15.00 BYN для Иван (+375291234567) успешно отправлен!' })
+  message: string;
+
+  @ApiProperty({ example: 15.0 })
+  amount: number;
+
+  @ApiProperty({ example: 'За пиццу', required: false })
+  comment?: string;
+
+  @ApiProperty({ type: P2pRecipientShortDto })
+  recipient: P2pRecipientShortDto;
+
+  @ApiProperty({ example: 85.0, description: 'Новый баланс карты отправителя' })
+  senderNewBalance: number;
+
+  @ApiProperty({ example: '4258 •••• •••• 1234' })
+  senderCardMask: string;
+
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  transactionId: string;
+}
+
 

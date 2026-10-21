@@ -11,7 +11,12 @@ import { AddChildDto, LinkChildDto, UpdateCardLimitsDto } from './users.dto';
 import { resolveChildRole } from '../../common/isAdult.helper';
 
 import { PassportService } from '../passport/passport.service';
-import { UserRole } from '#generated/prisma';
+import {
+  PiggyBankStatus,
+  TaskStatus,
+  TransactionStatus,
+  UserRole,
+} from '#generated/prisma';
 
 @Injectable()
 export class UsersService {
@@ -296,6 +301,7 @@ export class UsersService {
         phoneNumber: user.phoneNumber,
         birthDay: user.birthDay,
         role: user.role,
+        mobiksBalance: user.mobiksBalance,
         parents: user.parentRelations.map((rel) => rel.parent),
         cards: user.cards.map((c) => this.formatCard(c)),
       },
@@ -305,6 +311,7 @@ export class UsersService {
         phoneNumber: rel.child.phoneNumber,
         birthDay: rel.child.birthDay,
         role: rel.child.role,
+        mobiksBalance: rel.child.mobiksBalance,
         cards: rel.child.cards.map((c) => this.formatCard(c)),
       })),
     };
@@ -687,4 +694,176 @@ export class UsersService {
       })),
     };
   }
+
+  /**
+   * Получить статус прохождения квеста совершеннолетия («Квест 17.5: Путь к 18 🚀»)
+   */
+  async getGraduationStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        cards: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    // Рассчитываем возраст
+    const now = new Date();
+    const birth = new Date(user.birthDay);
+    const ageDiffMs = now.getTime() - birth.getTime();
+    const age = Math.round((ageDiffMs / (365.25 * 24 * 60 * 60 * 1000)) * 10) / 10;
+
+    // Статистика в банке
+    const completedPiggyBanksCount = await this.prisma.piggyBank.count({
+      where: { ownerId: userId, status: PiggyBankStatus.COMPLETED },
+    });
+
+    const completedTasksCount = await this.prisma.task.count({
+      where: {
+        OR: [{ completedById: userId }, { assignedChildId: userId }],
+        status: TaskStatus.COMPLETED,
+      },
+    });
+
+    const transactionsCount = await this.prisma.transaction.count({
+      where: { userId, status: TransactionStatus.SUCCESS },
+    });
+
+    // Чекпоинты готовности к взрослому банкингу
+    const checkpoints = [
+      {
+        title: 'Банковский стаж',
+        description: 'Возраст от 14 лет (статус подростка или совершеннолетнего)',
+        isCompleted: age >= 14,
+      },
+      {
+        title: 'Опыт накоплений',
+        description: 'Хотя бы одна успешно закрытая цель в Копилке',
+        isCompleted: completedPiggyBanksCount > 0,
+      },
+      {
+        title: 'Трудолюбие и ответственность',
+        description: 'Выполнено минимум 3 задания от родителей',
+        isCompleted: completedTasksCount >= 3,
+      },
+      {
+        title: 'Финансовая активность',
+        description: 'Совершено не менее 5 успешных покупок по карте',
+        isCompleted: transactionsCount >= 5,
+      },
+      {
+        title: 'Бонусный капитал',
+        description: 'Накоплено не менее 50 Мобиков',
+        isCompleted: user.mobiksBalance >= 50,
+      },
+    ];
+
+    const completedCheckpoints = checkpoints.filter((c) => c.isCompleted).length;
+    const progressPercentage = Math.min(
+      100,
+      Math.max(
+        15,
+        Math.round(
+          (age >= 17 ? 50 : (age / 18) * 40) +
+            (completedCheckpoints / checkpoints.length) * 50,
+        ),
+      ),
+    );
+
+    const isEligibleForGraduation =
+      user.role === UserRole.TEEN_14_17 || user.role === UserRole.CHILD_7_13;
+
+    return {
+      userId: user.id,
+      userName: user.name,
+      currentRole: user.role,
+      age,
+      progressPercentage,
+      isEligibleForGraduation,
+      completedPiggyBanksCount,
+      completedTasksCount,
+      mobiksBalance: user.mobiksBalance,
+      transactionsCount,
+      checkpoints,
+    };
+  }
+
+  /**
+   * Сценарий «Стать независимым пользователем банка (Переход 17 -> 18)»
+   */
+  async graduate(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        parentRelations: true,
+        cards: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    if (user.role !== UserRole.TEEN_14_17 && user.role !== UserRole.CHILD_7_13) {
+      throw new BadRequestException(
+        'Пользователь уже является независимым совершеннолетним клиентом банка (роль ORDINARY)',
+      );
+    }
+
+    const parentIds = user.parentRelations.map((r) => r.parentId);
+
+    // Выполняем переход во взрослый банкинг в единой транзакции
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Отвязываем всех родителей
+      await tx.familyRelation.deleteMany({
+        where: { childId: userId },
+      });
+
+      // 2. Для бывших родителей: если больше нет других детей, возвращаем роль ORDINARY
+      for (const parentId of parentIds) {
+        const remainingChildren = await tx.familyRelation.count({
+          where: { parentId },
+        });
+        if (remainingChildren === 0) {
+          await tx.user.update({
+            where: { id: parentId },
+            data: { role: UserRole.ORDINARY },
+          });
+        }
+      }
+
+      // 3. Обновляем роль пользователя на ORDINARY
+      await tx.user.update({
+        where: { id: userId },
+        data: { role: UserRole.ORDINARY },
+      });
+
+      // 4. Снимаем детские ограничения со всех карт пользователя
+      await tx.card.updateMany({
+        where: { userId },
+        data: {
+          dailyLimit: 5000.0,
+          allowOnlinePurchases: true,
+          allowCashWithdrawal: true,
+          isBlocked: false,
+        },
+      });
+    });
+
+    const updatedCards = await this.prisma.card.findMany({
+      where: { userId },
+      orderBy: { id: 'asc' },
+    });
+
+    return {
+      message:
+        '🎉 Поздравляем с выпуском во взрослый банкинг! Вы стали независимым клиентом МТБанка. Все детские ограничения, родительский контроль и лимиты сняты. Ваши карты, сбережения, копилки и Мобики сохранены в полном объеме.',
+      newRole: UserRole.ORDINARY,
+      cards: updatedCards.map((c) => this.formatCard(c)),
+    };
+  }
 }
+

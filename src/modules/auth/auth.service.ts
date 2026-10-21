@@ -123,6 +123,27 @@ export class AuthService {
     return { success: true };
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        phoneNumber: true,
+        name: true,
+        birthDay: true,
+        role: true,
+        mobiksBalance: true,
+        selectedCashbackCategories: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Пользователь не найден');
+    }
+
+    return user;
+  }
+
   private async updateRefreshToken(userId: string, refreshToken: string) {
     const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
     await this.prisma.user.update({

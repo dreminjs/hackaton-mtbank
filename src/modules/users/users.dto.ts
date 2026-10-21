@@ -113,6 +113,9 @@ export class ChildUserWithCardsDto {
   @ApiProperty({ example: 'CHILD_7_13' })
   role: string;
 
+  @ApiProperty({ example: 120, description: 'Бонусный баланс Мобиков' })
+  mobiksBalance: number;
+
   @ApiProperty({ type: [CardDto] })
   cards: CardDto[];
 }
@@ -188,6 +191,9 @@ export class FamilyMemberUserDto {
 
   @ApiProperty({ example: 'CHILD_7_13' })
   role: string;
+
+  @ApiProperty({ example: 120, description: 'Бонусный баланс Мобиков' })
+  mobiksBalance: number;
 
   @ApiProperty({ type: [ParentSummaryDto] })
   parents: ParentSummaryDto[];
@@ -285,3 +291,61 @@ export class ResetSpentTodayResponseDto {
   @ApiProperty({ type: ResetSpentTodayDetailsDto })
   card: ResetSpentTodayDetailsDto;
 }
+
+export class GraduationCheckpointDto {
+  @ApiProperty({ example: 'Опыт накоплений' })
+  title: string;
+
+  @ApiProperty({ example: 'Успешно закрыта хотя бы одна копилка' })
+  description: string;
+
+  @ApiProperty({ example: true })
+  isCompleted: boolean;
+}
+
+export class GraduationStatusResponseDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  userId: string;
+
+  @ApiProperty({ example: 'Иван Дрёмин' })
+  userName: string;
+
+  @ApiProperty({ example: 'TEEN_14_17' })
+  currentRole: string;
+
+  @ApiProperty({ example: 17.5 })
+  age: number;
+
+  @ApiProperty({ example: 85, description: 'Процент готовности к самостоятельному банкингу (0-100%)' })
+  progressPercentage: number;
+
+  @ApiProperty({ example: true, description: 'Доступна ли кнопка выпуска во взрослый банкинг' })
+  isEligibleForGraduation: boolean;
+
+  @ApiProperty({ example: 2, description: 'Количество успешно накопленных и закрытых копилок' })
+  completedPiggyBanksCount: number;
+
+  @ApiProperty({ example: 5, description: 'Количество выполненных заданий от родителей' })
+  completedTasksCount: number;
+
+  @ApiProperty({ example: 120, description: 'Баланс бонусов Мобиков' })
+  mobiksBalance: number;
+
+  @ApiProperty({ example: 14, description: 'Количество совершенных покупок' })
+  transactionsCount: number;
+
+  @ApiProperty({ type: [GraduationCheckpointDto] })
+  checkpoints: GraduationCheckpointDto[];
+}
+
+export class GraduateResponseDto {
+  @ApiProperty({ example: 'Поздравляем с переходом во взрослый банкинг! Все детские ограничения и родительский контроль сняты.' })
+  message: string;
+
+  @ApiProperty({ example: 'ORDINARY' })
+  newRole: string;
+
+  @ApiProperty({ type: [CardDto] })
+  cards: CardDto[];
+}
+

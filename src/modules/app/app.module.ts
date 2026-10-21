@@ -12,6 +12,7 @@ import { UsersModule } from '../users/users.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { PiggyBanksModule } from '../piggy-banks/piggy-banks.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     TasksModule,
     PiggyBanksModule,
     NotificationsModule,
+    LoyaltyModule,
   ],
   controllers: [AppController],
   providers: [
