@@ -508,6 +508,12 @@ export class UsersService {
         ...(dto.isBlocked !== undefined && {
           isBlocked: dto.isBlocked,
         }),
+        ...(dto.pocketMoneyAmount !== undefined && {
+          pocketMoneyAmount: dto.pocketMoneyAmount,
+        }),
+        ...(dto.pocketMoneyDay !== undefined && {
+          pocketMoneyDay: dto.pocketMoneyDay,
+        }),
       },
     });
 
@@ -529,6 +535,8 @@ export class UsersService {
         allowOnlinePurchases: updatedCard.allowOnlinePurchases,
         allowCashWithdrawal: updatedCard.allowCashWithdrawal,
         isBlocked: updatedCard.isBlocked,
+        pocketMoneyAmount: Number(updatedCard.pocketMoneyAmount),
+        pocketMoneyDay: updatedCard.pocketMoneyDay,
       },
     };
   }
@@ -597,6 +605,8 @@ export class UsersService {
       remainingDailyLimit: Math.max(0, dailyLimit - spentToday),
       allowOnlinePurchases: card.allowOnlinePurchases,
       allowCashWithdrawal: card.allowCashWithdrawal,
+      pocketMoneyAmount: Number(card.pocketMoneyAmount),
+      pocketMoneyDay: card.pocketMoneyDay,
     };
   }
 

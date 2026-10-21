@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Card" ADD COLUMN "pocketMoneyAmount" DECIMAL(10,2) NOT NULL DEFAULT 25.0,
+ADD COLUMN "pocketMoneyDay" INTEGER NOT NULL DEFAULT 1;

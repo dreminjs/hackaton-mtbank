@@ -29,6 +29,18 @@ export const UpdateCardLimitsSchema = z.object({
   allowOnlinePurchases: z.boolean().optional().describe('Разрешить онлайн-покупки'),
   allowCashWithdrawal: z.boolean().optional().describe('Разрешить снятие наличных'),
   isBlocked: z.boolean().optional().describe('Заблокировать / разблокировать карту'),
+  pocketMoneyAmount: z
+    .number()
+    .gte(0, 'Сумма карманных не может быть отрицательной')
+    .optional()
+    .describe('Сумма регулярного автоперевода карманных денег в BYN'),
+  pocketMoneyDay: z
+    .number()
+    .int()
+    .min(1)
+    .max(7)
+    .optional()
+    .describe('День недели автоперевода карманных денег (1 — понедельник, 7 — воскресенье)'),
 });
 
 export class UpdateCardLimitsDto extends createZodDto(UpdateCardLimitsSchema) {}
@@ -70,6 +82,12 @@ export class CardDto {
 
   @ApiProperty({ example: 25.0 })
   remainingDailyLimit: number;
+
+  @ApiProperty({ example: 25.0, description: 'Сумма карманных в неделю' })
+  pocketMoneyAmount: number;
+
+  @ApiProperty({ example: 1, description: 'День недели выплаты (1 — понедельник, 7 — воскресенье)' })
+  pocketMoneyDay: number;
 }
 
 export class CardTransactionDto {
@@ -257,6 +275,12 @@ export class CardLimitsDetailsDto {
 
   @ApiProperty({ example: false })
   isBlocked: boolean;
+
+  @ApiProperty({ example: 25.0, description: 'Сумма карманных в неделю' })
+  pocketMoneyAmount: number;
+
+  @ApiProperty({ example: 1, description: 'День недели выплаты (1 — понедельник, 7 — воскресенье)' })
+  pocketMoneyDay: number;
 }
 
 export class UpdateCardLimitsResponseDto {

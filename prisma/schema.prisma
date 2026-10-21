@@ -69,6 +69,9 @@ model Card {
   allowOnlinePurchases  Boolean @default(true)
   allowCashWithdrawal   Boolean @default(false)
 
+  pocketMoneyAmount Decimal @default(25.0) @db.Decimal(10, 2)
+  pocketMoneyDay    Int     @default(1)
+
   userId           String
   user             User              @relation(fields: [userId], references: [id])
   transactions     Transaction[]
