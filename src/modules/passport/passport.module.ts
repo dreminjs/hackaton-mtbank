@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { PassportController } from './passport.conroller';
+import { PassportController } from './passport.controller';
 import { PassportService } from './passport.service';
 
 @Module({

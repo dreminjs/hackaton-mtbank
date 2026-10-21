@@ -36,13 +36,21 @@ import {
   CardDetailsDto,
 } from './users.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PaymentsService } from '../payments/payments.service';
+import {
+  ChildDirectTransferDto,
+  ParentToChildTransferResponseDto,
+} from '../payments/payments.dto';
 
 @ApiTags('users / family')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Post('family/children')
   @ApiOperation({
@@ -126,6 +134,30 @@ export class UsersController {
   async removeChild(@Req() req: any, @Param('childId') childId: string) {
     const parentId = req.user.id || req.user.sub;
     return this.usersService.removeChild(parentId, childId);
+  }
+
+  @Post('family/children/:childId/transfer')
+  @ApiOperation({
+    summary: 'Перевести деньги ребенку от родителя (по ID ребенка в семье)',
+    description:
+      'Родитель мгновенно отправляет деньги на карту ребенка. Сумма списывается с карты родителя и зачисляется ребенку, создается история и отправляется уведомление ребенку.',
+  })
+  @ApiParam({ name: 'childId', description: 'ID ребенка-получателя' })
+  @ApiResponse({
+    status: 200,
+    description: 'Деньги успешно переведены ребенку',
+    type: ParentToChildTransferResponseDto,
+  })
+  async transferToChild(
+    @Req() req: any,
+    @Param('childId') childId: string,
+    @Body() dto: ChildDirectTransferDto,
+  ) {
+    const parentId = req.user.id || req.user.sub;
+    return this.paymentsService.transferToChild(parentId, {
+      ...dto,
+      childId,
+    });
   }
 
   @Delete('family/parents/:parentId')

@@ -10,6 +10,7 @@ import type {
   CreateTransferRequestDto,
   ApproveTransferRequestDto,
   DeclineTransferRequestDto,
+  ParentToChildTransferDto,
 } from './payments.dto';
 import { resolveMcc } from './payments.constants';
 import { isAdult } from '../../common/isAdult.helper';
@@ -20,12 +21,14 @@ import {
   UserRole,
 } from '#generated/prisma';
 import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly notificationsGateway: NotificationsGateway,
   ) {}
 
   async payByQr(userId: string, dto: PayQrDto) {
@@ -615,6 +618,228 @@ export class PaymentsService {
         card: updated.card,
         resolvedBy: updated.resolvedBy,
       },
+    };
+  }
+
+  /**
+   * 5. Прямой перевод денег ребенку от родителя
+   * Родитель выбирает ребенка, сумму, комментарий и переводит средства напрямую.
+   */
+  async transferToChild(parentId: string, dto: ParentToChildTransferDto) {
+    // 1. Проверяем родителя
+    const parent = await this.prisma.user.findUnique({
+      where: { id: parentId },
+      include: { cards: true },
+    });
+
+    if (!parent) {
+      throw new NotFoundException('Родитель не найден');
+    }
+
+    // 2. Проверяем ребенка
+    const child = await this.prisma.user.findUnique({
+      where: { id: dto.childId },
+      include: { cards: true },
+    });
+
+    if (!child) {
+      throw new NotFoundException('Ребенок с указанным ID не найден');
+    }
+
+    // 3. Проверяем семейную связь: родитель -> ребенок
+    const relation = await this.prisma.familyRelation.findUnique({
+      where: {
+        parentId_childId: {
+          parentId,
+          childId: dto.childId,
+        },
+      },
+    });
+
+    if (!relation) {
+      throw new ForbiddenException('Пользователь не является вашим ребенком в семейном профиле');
+    }
+
+    // 4. Выбираем карту родителя для списания
+    let parentCard = dto.parentCardId
+      ? parent.cards.find((c) => c.id === dto.parentCardId)
+      : parent.cards.find((c) => Number(c.balance) >= dto.amount && !c.isBlocked);
+
+    if (!parentCard && !dto.parentCardId) {
+      parentCard = parent.cards.find((c) => !c.isBlocked);
+    }
+
+    if (!parentCard) {
+      throw new BadRequestException('У родителя нет доступных карт для перевода');
+    }
+
+    if (parentCard.isBlocked) {
+      throw new BadRequestException('Выбранная карта родителя заблокирована');
+    }
+
+    if (Number(parentCard.balance) < dto.amount) {
+      throw new BadRequestException(
+        `Недостаточно средств на карте родителя (баланс: ${Number(parentCard.balance)} BYN, требуется: ${dto.amount} BYN)`,
+      );
+    }
+
+    // 5. Выбираем или создаем карту ребенка для зачисления
+    let childCard = dto.childCardId
+      ? child.cards.find((c) => c.id === dto.childCardId)
+      : child.cards.find((c) => !c.isBlocked);
+
+    if (!childCard) {
+      if (child.cards.length > 0) {
+        childCard = child.cards[0];
+      } else {
+        // Автоматически выпускаем виртуальную карту ребенку, если у него еще нет карт
+        const randomLastDigits = Math.floor(1000 + Math.random() * 9000).toString();
+        childCard = await this.prisma.card.create({
+          data: {
+            userId: child.id,
+            cardNumberMask: `4258 •••• •••• ${randomLastDigits}`,
+            cardholderName: child.name.toUpperCase(),
+            expiryDate: '10/29',
+            type: 'VIRTUAL',
+            balance: 0.0,
+            dailyLimit: 50.0,
+            spentToday: 0.0,
+            allowOnlinePurchases: true,
+            allowCashWithdrawal: true,
+          },
+        });
+      }
+    }
+
+    if (childCard.isBlocked) {
+      throw new BadRequestException('Карта ребенка заблокирована. Разблокируйте карту перед переводом');
+    }
+
+    const commentText = dto.comment?.trim() || 'Перевод от родителя';
+
+    // 6. Атомарно выполняем перевод
+    const [updatedParentCard, updatedChildCard, parentTx, childTx, transferRequest] =
+      await this.prisma.$transaction([
+        // Списание с родителя
+        this.prisma.card.update({
+          where: { id: parentCard.id },
+          data: {
+            balance: { decrement: dto.amount },
+          },
+        }),
+        // Пополнение ребенку
+        this.prisma.card.update({
+          where: { id: childCard.id },
+          data: {
+            balance: { increment: dto.amount },
+          },
+        }),
+        // Транзакция списания родителю
+        this.prisma.transaction.create({
+          data: {
+            amount: dto.amount,
+            merchant: `Перевод ребенку: ${child.name}${dto.comment ? ` (${dto.comment})` : ''}`,
+            category: 'TRANSFER',
+            status: TransactionStatus.SUCCESS,
+            userId: parent.id,
+            cardId: parentCard.id,
+          },
+        }),
+        // Транзакция пополнения ребенку
+        this.prisma.transaction.create({
+          data: {
+            amount: dto.amount,
+            merchant: `Пополнение от родителя: ${parent.name}${dto.comment ? ` (${dto.comment})` : ''}`,
+            category: 'TRANSFER',
+            status: TransactionStatus.SUCCESS,
+            userId: child.id,
+            cardId: childCard.id,
+          },
+        }),
+        // Фиксация в TransferRequest со статусом APPROVED
+        this.prisma.transferRequest.create({
+          data: {
+            amount: dto.amount,
+            comment: commentText,
+            status: TransferRequestStatus.APPROVED,
+            childId: child.id,
+            cardId: childCard.id,
+            resolvedById: parent.id,
+          },
+        }),
+      ]);
+
+    // 7. Мгновенное push-уведомление через Socket.IO ребенку
+    try {
+      const socketPayload = {
+        type: 'PARENT_TRANSFER',
+        title: '💸 Пополнение карты!',
+        message: `Родитель ${parent.name} перевел вам ${dto.amount.toFixed(2)} BYN${dto.comment ? ` («${dto.comment}»)` : ''}`,
+        amount: dto.amount,
+        comment: dto.comment,
+        parentName: parent.name,
+        childCardBalance: Number(updatedChildCard.balance),
+        cardMask: childCard.cardNumberMask,
+        transactionId: childTx.id,
+        createdAt: new Date().toISOString(),
+      };
+
+      this.notificationsGateway.sendToUser(child.id, 'parent_transfer', socketPayload);
+      this.notificationsGateway.sendToUser(child.id, 'notification', socketPayload);
+    } catch (e) {
+      // Игнорируем сетевые ошибки сокетов
+    }
+
+    // 8. Сохраняем уведомление в БД для истории
+    try {
+      await this.prisma.notification.create({
+        data: {
+          type: NotificationType.TRANSFER_REQUEST,
+          title: '💸 Пополнение карты от родителя',
+          message: `Родитель ${parent.name} перевел ${dto.amount.toFixed(2)} BYN${dto.comment ? ` («${dto.comment}»)` : ''}`,
+          data: {
+            amount: dto.amount,
+            comment: dto.comment,
+            parentId: parent.id,
+            parentName: parent.name,
+            cardMask: childCard.cardNumberMask,
+            transactionId: childTx.id,
+          },
+          userId: child.id,
+          childId: child.id,
+        },
+      });
+    } catch (e) {
+      // Игнорируем ошибку сохранения уведомления
+    }
+
+    return {
+      message: `Перевод на сумму ${dto.amount.toFixed(2)} BYN ребенку ${child.name} успешно выполнен!`,
+      amount: dto.amount,
+      comment: dto.comment,
+      parentCard: {
+        id: updatedParentCard.id,
+        cardNumberMask: updatedParentCard.cardNumberMask,
+        cardholderName: updatedParentCard.cardholderName,
+        type: updatedParentCard.type,
+        balance: Number(updatedParentCard.balance),
+      },
+      childCard: {
+        id: updatedChildCard.id,
+        cardNumberMask: updatedChildCard.cardNumberMask,
+        cardholderName: updatedChildCard.cardholderName,
+        type: updatedChildCard.type,
+        balance: Number(updatedChildCard.balance),
+      },
+      child: {
+        id: child.id,
+        name: child.name,
+      },
+      transactions: {
+        parentTransactionId: parentTx.id,
+        childTransactionId: childTx.id,
+      },
+      transferRequestId: transferRequest.id,
     };
   }
 

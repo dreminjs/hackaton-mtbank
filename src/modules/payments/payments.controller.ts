@@ -30,6 +30,8 @@ import {
   PayQrDto,
   PayQrResponseDto,
   TransferRequestListItemDto,
+  ParentToChildTransferDto,
+  ParentToChildTransferResponseDto,
 } from './payments.dto';
 
 @ApiTags('payments')
@@ -130,6 +132,25 @@ export class PaymentsController {
   ) {
     const parentId = req.user.id || req.user.sub;
     return this.paymentsService.declineTransferRequest(parentId, id, dto);
+  }
+
+  @Post('transfer/to-child')
+  @ApiOperation({
+    summary: 'Прямой перевод денег ребенку от родителя',
+    description:
+      'Родитель мгновенно переводит средства со своей карты на карту ребенка без предварительного запроса со стороны ребенка. Средства атомарно списываются с карты родителя и зачисляются ребенку. Создается история транзакций и отправляется WebSocket-уведомление ребенку.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Деньги успешно переведены ребенку',
+    type: ParentToChildTransferResponseDto,
+  })
+  async transferToChild(
+    @Req() req: any,
+    @Body() dto: ParentToChildTransferDto,
+  ) {
+    const parentId = req.user.id || req.user.sub;
+    return this.paymentsService.transferToChild(parentId, dto);
   }
 
   @Get('transactions')

@@ -10,5 +10,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [PrismaModule, JwtModule, NotificationsModule],
   providers: [PaymentsService],
   controllers: [PaymentsController],
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

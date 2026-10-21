@@ -52,6 +52,56 @@ export const DeclineTransferRequestSchema = z.object({
 export class DeclineTransferRequestDto extends createZodDto(DeclineTransferRequestSchema) { }
 export type TDeclineTransferRequestDto = z.infer<typeof DeclineTransferRequestSchema>;
 
+// Прямой перевод денег ребенку от родителя
+export const ParentToChildTransferSchema = z.object({
+  childId: z.string().min(1, 'ID ребенка обязателен').describe('ID ребенка-получателя'),
+  amount: z
+    .number()
+    .positive('Сумма перевода должна быть больше 0')
+    .min(0.01, 'Минимальная сумма — 0.01 BYN')
+    .describe('Сумма перевода в BYN'),
+  comment: z
+    .string()
+    .max(500, 'Комментарий не должен превышать 500 символов')
+    .optional()
+    .describe('Комментарий к переводу (на карманные расходы, обед и т.д.)'),
+  parentCardId: z
+    .string()
+    .optional()
+    .describe('ID карты родителя для списания (если не указана, выберется автоматически)'),
+  childCardId: z
+    .string()
+    .optional()
+    .describe('ID карты ребенка для зачисления (если не указана, выберется автоматически)'),
+});
+
+export class ParentToChildTransferDto extends createZodDto(ParentToChildTransferSchema) { }
+export type TParentToChildTransferDto = z.infer<typeof ParentToChildTransferSchema>;
+
+export const ChildDirectTransferSchema = z.object({
+  amount: z
+    .number()
+    .positive('Сумма перевода должна быть больше 0')
+    .min(0.01, 'Минимальная сумма — 0.01 BYN')
+    .describe('Сумма перевода в BYN'),
+  comment: z
+    .string()
+    .max(500, 'Комментарий не должен превышать 500 символов')
+    .optional()
+    .describe('Комментарий к переводу (на карманные расходы, обед и т.д.)'),
+  parentCardId: z
+    .string()
+    .optional()
+    .describe('ID карты родителя для списания (если не указана, выберется автоматически)'),
+  childCardId: z
+    .string()
+    .optional()
+    .describe('ID карты ребенка для зачисления (если не указана, выберется автоматически)'),
+});
+
+export class ChildDirectTransferDto extends createZodDto(ChildDirectTransferSchema) { }
+export type TChildDirectTransferDto = z.infer<typeof ChildDirectTransferSchema>;
+
 // --- Swagger Response Models ---
 
 export class TransactionItemDto {
@@ -314,5 +364,39 @@ export class FamilyTransactionsFeedResponseDto {
 
   @ApiProperty({ type: [DetailedTransactionDto] })
   transactions: DetailedTransactionDto[];
+}
+
+export class ParentToChildTransferTransactionsDto {
+  @ApiProperty({ example: 'b3f5c71a-47d2-432a-bc91-382940294821' })
+  parentTransactionId: string;
+
+  @ApiProperty({ example: 'e7a1b2c3-1122-3344-5566-778899aabbcc' })
+  childTransactionId: string;
+}
+
+export class ParentToChildTransferResponseDto {
+  @ApiProperty({ example: 'Перевод на сумму 25.00 BYN ребенку Иван успешно выполнен!' })
+  message: string;
+
+  @ApiProperty({ example: 25.0 })
+  amount: number;
+
+  @ApiProperty({ example: 'На карманные расходы', required: false })
+  comment?: string;
+
+  @ApiProperty({ type: TransferRequestCardDto })
+  parentCard: TransferRequestCardDto;
+
+  @ApiProperty({ type: TransferRequestCardDto })
+  childCard: TransferRequestCardDto;
+
+  @ApiProperty({ type: TransferRequestUserShortDto })
+  child: TransferRequestUserShortDto;
+
+  @ApiProperty({ type: ParentToChildTransferTransactionsDto })
+  transactions: ParentToChildTransferTransactionsDto;
+
+  @ApiProperty({ example: 'a1b2c3d4-5678-90ab-cdef-1234567890ab', required: false })
+  transferRequestId?: string;
 }
 
